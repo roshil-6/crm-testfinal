@@ -72,7 +72,23 @@ npm start
 
 See [USER_CREDENTIALS_SUMMARY.md](./USER_CREDENTIALS_SUMMARY.md) for all user credentials.
 
-## Deployment
+## Quick Deployment (Get Demo Link in 2 Minutes)
+
+### 🚀 Deploy to Vercel (Recommended)
+
+**Option 1: One-Click Deploy**
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/roshil-6/CRM-&root-directory=client)
+
+**Option 2: Manual Deploy**
+1. Go to [Vercel](https://vercel.com/new)
+2. Import repository: `roshil-6/CRM-`
+3. **Set Root Directory to**: `client`
+4. Add environment variable: `REACT_APP_API_URL` = your backend URL
+5. Click Deploy → Get your demo link!
+
+See [QUICK_DEPLOY.md](./QUICK_DEPLOY.md) for detailed instructions.
+
+### 📋 Full Deployment Guide
 
 See [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md) for detailed deployment instructions for Vercel and Netlify.
 
