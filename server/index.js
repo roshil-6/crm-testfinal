@@ -26,6 +26,25 @@ try {
   console.error('❌ Database connection error:', err.message);
 }
 
+// Root route
+app.get('/', (req, res) => {
+  res.json({
+    message: 'Tonio & Senora CRM API',
+    version: '1.0.0',
+    status: 'running',
+    endpoints: {
+      health: '/api/health',
+      auth: '/api/auth',
+      dashboard: '/api/dashboard',
+      leads: '/api/leads',
+      attendance: '/api/attendance',
+      users: '/api/users',
+      notifications: '/api/notifications'
+    },
+    documentation: 'See README.md for API documentation'
+  });
+});
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/dashboard', dashboardRoutes);
