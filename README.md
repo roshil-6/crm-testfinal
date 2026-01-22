@@ -1,242 +1,139 @@
 # Tonio & Senora CRM System
 
-A production-ready internal CRM system for Tonio & Senora company.
+A comprehensive Customer Relationship Management (CRM) system built with React and Node.js.
 
 ## Features
 
-### Role-Based Access Control
-- **ADMIN**: Full access to all data and features
-- **STAFF**: Restricted access to only their own data
+- ✅ **User Role Management**: Admin, Sales Team Head, Sales Team, Processing
+- ✅ **Lead Management**: Create, assign, and track leads
+- ✅ **Notification System**: Real-time notifications when leads are assigned
+- ✅ **Attendance Tracking**: Check-in/check-out functionality
+- ✅ **Team Management**: Sales team heads can manage their teams
+- ✅ **Interactive UI**: Golden animated background lines
+- ✅ **Search Functionality**: Search leads by name, phone, email, or staff member
 
-### Modules
+## Tech Stack
 
-1. **Dashboard**
-   - STAFF: Personal metrics, lead status breakdown, today's follow-ups, recent activity
-   - ADMIN: Company-wide metrics, staff performance, attendance overview
+- **Frontend**: React 18, React Router, Axios
+- **Backend**: Node.js, Express.js
+- **Database**: JSON file-based (server/data/crm.json)
+- **Authentication**: JWT tokens
 
-2. **Clients (Leads)**
-   - Lead management with full CRUD operations
-   - Status tracking (New, Follow-up, Under Processing, Converted, Closed/Rejected)
-   - Comment system for lead communication
-   - Search and filter capabilities
-   - STAFF can only view/edit leads assigned to them
-   - ADMIN can view all leads and assign to any staff
-
-3. **Attendance**
-   - Check-in/Check-out functionality
-   - Attendance history
-   - STAFF can only view their own attendance
-   - ADMIN can view all staff attendance with filtering
-
-## Technology Stack
-
-### Backend
-- Node.js with Express
-- PostgreSQL database
-- JWT authentication
-- bcryptjs for password hashing
-
-### Frontend
-- React 18
-- React Router for navigation
-- Axios for API calls
-- React Icons for UI icons
-
-## Setup Instructions
+## Quick Start
 
 ### Prerequisites
-- Node.js (v14 or higher)
-- PostgreSQL (v12 or higher)
+- Node.js 18+ installed
 - npm or yarn
-
-### Database Setup
-
-1. Create a PostgreSQL database:
-```sql
-CREATE DATABASE tonio_senora_crm;
-```
-
-2. Update the database credentials in `server/.env`:
-```
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=tonio_senora_crm
-DB_USER=postgres
-DB_PASSWORD=your_password
-```
 
 ### Installation
 
-1. Install root dependencies:
+1. Clone the repository:
 ```bash
-npm install
+git clone https://github.com/roshil-6/CRM-.git
+cd CRM
 ```
 
-2. Install backend dependencies:
+2. Install dependencies:
 ```bash
+# Backend
 cd server
 npm install
-```
 
-3. Install frontend dependencies:
-```bash
+# Frontend
 cd ../client
 npm install
 ```
 
-4. Initialize the database (creates tables and seed data):
-```bash
-cd ../server
-npm run init-db
-```
-
-This will create:
-- All necessary database tables
-- Admin user: `admin@toniosenora.com` / `admin123`
-- Staff user (Emy P Thomas): `emy@toniosenora.com` / `staff123`
-
-### Running the Application
-
-From the root directory:
-```bash
-npm run dev
-```
-
-This will start both the backend server (port 5000) and frontend development server (port 3000).
-
-Or run separately:
-
-**Backend:**
+3. Create users:
 ```bash
 cd server
-npm run dev
+node scripts/createAllUsers.js
 ```
 
-**Frontend:**
+4. Start the application:
+
+**Terminal 1 - Backend:**
+```bash
+cd server
+npm start
+```
+
+**Terminal 2 - Frontend:**
 ```bash
 cd client
 npm start
 ```
 
-## Default Login Credentials
+5. Access the application:
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:5001
 
-- **Admin**: 
-  - Email: `admin@toniosenora.com`
-  - Password: `admin123`
+## User Credentials
 
-- **Staff (Emy P Thomas)**: 
-  - Email: `emy@toniosenora.com`
-  - Password: `staff123`
+See [USER_CREDENTIALS_SUMMARY.md](./USER_CREDENTIALS_SUMMARY.md) for all user credentials.
 
-## Security Features
+## Deployment
 
-### Backend Security
-- All API endpoints require authentication
-- Role-based authorization middleware
-- Database-level filtering for STAFF users
-- Password hashing with bcryptjs
-- JWT token-based authentication
+See [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md) for detailed deployment instructions for Vercel and Netlify.
 
-### Data Visibility Rules
-- **STAFF users** can ONLY see:
-  - Their own dashboard metrics
-  - Leads assigned to them
-  - Their own attendance records
-  
-- **ADMIN users** can see:
-  - All staff dashboards
-  - All leads
-  - All attendance records
+### Quick Deployment Notes:
 
-These restrictions are enforced at:
-1. Database query level
-2. API middleware level
-3. Frontend UI level
+**For Vercel/Netlify:**
+- Set **Root Directory** to `client`
+- Set **Build Command** to `npm install && npm run build`
+- Set **Output Directory** to `build`
+- Add environment variable: `REACT_APP_API_URL` (your backend URL)
 
-## API Endpoints
-
-### Authentication
-- `POST /api/auth/login` - User login
-- `GET /api/auth/me` - Get current user
-
-### Dashboard
-- `GET /api/dashboard` - Get dashboard data (role-based)
-
-### Leads
-- `GET /api/leads` - Get all leads (filtered by role)
-- `GET /api/leads/:id` - Get single lead
-- `POST /api/leads` - Create new lead
-- `PUT /api/leads/:id` - Update lead
-- `GET /api/leads/:id/comments` - Get lead comments
-- `POST /api/leads/:id/comments` - Add comment to lead
-- `GET /api/leads/staff/list` - Get staff list (ADMIN only)
-
-### Attendance
-- `POST /api/attendance/checkin` - Check in
-- `POST /api/attendance/checkout` - Check out
-- `GET /api/attendance/today` - Get today's attendance status
-- `GET /api/attendance/history` - Get attendance history (filtered by role)
-- `GET /api/attendance/staff` - Get staff list (ADMIN only)
+**Backend Deployment:**
+- Deploy to Heroku, Railway, Render, or DigitalOcean
+- Backend requires file system access for JSON database
 
 ## Project Structure
 
 ```
 CRM/
-├── server/
-│   ├── config/
-│   │   └── database.js
-│   ├── middleware/
-│   │   └── auth.js
-│   ├── routes/
-│   │   ├── auth.js
-│   │   ├── dashboard.js
-│   │   ├── leads.js
-│   │   └── attendance.js
-│   ├── scripts/
-│   │   └── initDatabase.js
-│   ├── index.js
-│   └── package.json
-├── client/
-│   ├── public/
+├── client/                 # React frontend
 │   ├── src/
-│   │   ├── components/
-│   │   ├── context/
-│   │   ├── pages/
-│   │   ├── App.js
-│   │   └── index.js
-│   └── package.json
-└── package.json
+│   │   ├── components/     # Reusable components
+│   │   ├── pages/          # Page components
+│   │   ├── context/        # React context
+│   │   └── config/        # Configuration
+│   └── public/            # Static files
+├── server/                 # Node.js backend
+│   ├── routes/            # API routes
+│   ├── config/            # Database config
+│   ├── middleware/        # Auth middleware
+│   ├── scripts/           # Utility scripts
+│   └── data/              # JSON database
+└── Documentation files
 ```
 
-## Important Notes
+## Key Features
 
-1. **Emy P Thomas is a STAFF user**, not an admin. This is enforced in the database and application logic.
+### Role-Based Access Control
+- **Admin**: Full access to all data
+- **Sales Team Head**: Access to own team's data only
+- **Sales Team**: Access to own data only
+- **Processing**: Access to own data only
 
-2. **Data isolation**: STAFF users cannot access other staff members' data under any circumstance. This is enforced at multiple levels.
+### Notification System
+- Bell icon in navigation bar
+- Notifications when leads are assigned
+- Unread count badge
+- Mark as read functionality
 
-3. **Comments**: Comments cannot be edited or deleted after creation. Only authorized users can comment on leads they have access to.
+### Team Management
+- Sales team members assigned to team heads
+- Team heads can view their team's dashboards
+- Isolated data access per team
 
-4. **Lead Assignment**: 
-   - STAFF can only create leads assigned to themselves
-   - ADMIN can assign leads to any staff member
+## Documentation
 
-## Development
-
-The application uses:
-- Hot reloading for both frontend and backend
-- CORS enabled for development
-- Environment variables for configuration
-
-## Production Deployment
-
-Before deploying to production:
-
-1. Change `JWT_SECRET` in `server/.env` to a strong, random secret
-2. Update database credentials
-3. Set `NODE_ENV=production`
-4. Build the frontend: `cd client && npm run build`
-5. Configure your web server to serve the built frontend and proxy API requests to the backend
+- [User Credentials Summary](./USER_CREDENTIALS_SUMMARY.md)
+- [Deployment Guide](./DEPLOYMENT_GUIDE.md)
+- [User Roles Implementation](./USER_ROLES_IMPLEMENTATION.md)
+- [How to Start](./HOW_TO_START.md)
 
 ## License
 
-Internal use only - Tonio & Senora
+Private project for Tonio & Senora
