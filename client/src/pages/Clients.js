@@ -58,7 +58,6 @@ const Clients = () => {
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleFocus);
-      clearInterval(interval);
     };
   }, []);
 

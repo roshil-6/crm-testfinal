@@ -105,7 +105,6 @@ const KripaDashboard = ({ viewingStaffId = null }) => {
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleFocus);
-      clearInterval(interval);
     };
   }, [kripaStaffId, fetchClients]);
 
