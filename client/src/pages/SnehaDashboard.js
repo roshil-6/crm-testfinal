@@ -19,7 +19,7 @@ const SnehaDashboard = ({ viewingStaffId = null }) => {
   const fetchKripaUser = useCallback(async () => {
     try {
       const response = await axios.get(`${API_BASE_URL}/api/users`);
-      const kripa = response.data?.find(u => 
+      const kripa = response.data?.find(u =>
         u.name === 'Kripa' || u.name === 'KRIPA' || u.email === 'kripa@toniosenora.com'
       ) || null;
       setKripaUser(kripa);
@@ -35,7 +35,7 @@ const SnehaDashboard = ({ viewingStaffId = null }) => {
       console.log('⚠️ Staff ID not available yet');
       return;
     }
-    
+
     try {
       setLoading(true);
       console.log('🔍 Sneha fetching clients with assigned_staff_id:', snehaStaffId, viewingStaffId ? '(Admin viewing)' : '(Self view)');
@@ -62,7 +62,7 @@ const SnehaDashboard = ({ viewingStaffId = null }) => {
   // Auto-refresh when page becomes visible (user switches tabs/windows)
   useEffect(() => {
     if (!snehaStaffId) return;
-    
+
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && snehaStaffId) {
         console.log('🔄 Sneha dashboard visible, refreshing...');
@@ -99,6 +99,7 @@ const SnehaDashboard = ({ viewingStaffId = null }) => {
     setEditData({
       amount_paid: client.amount_paid || '',
       fee_status: client.fee_status || '',
+      payment_due_date: client.payment_due_date ? client.payment_due_date.split('T')[0] : '',
     });
   };
 
@@ -131,7 +132,7 @@ const SnehaDashboard = ({ viewingStaffId = null }) => {
 
       console.log('✅ Assignment response:', response.data);
       console.log('✅ Client processing_staff_id after update:', response.data.processing_staff_id);
-      
+
       alert('Client assigned to Kripa successfully!');
       fetchClients();
     } catch (error) {
@@ -290,6 +291,15 @@ const SnehaDashboard = ({ viewingStaffId = null }) => {
                           <option value="Payment Pending">Payment Pending</option>
                           <option value="PTE Fee Paid">PTE Fee Paid</option>
                         </select>
+                      </div>
+                      <div className="cv-detail-row">
+                        <span className="cv-label">Payment Due Date:</span>
+                        <input
+                          type="date"
+                          value={editData.payment_due_date}
+                          onChange={(e) => setEditData({ ...editData, payment_due_date: e.target.value })}
+                          className="cv-input"
+                        />
                       </div>
                       <div className="cv-actions">
                         <button

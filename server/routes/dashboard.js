@@ -73,14 +73,17 @@ router.get('/staff/:id', authenticate, async (req, res) => {
     // Check if user is Emy
     const isEmy = userName === 'Emy' || userName === 'EMY' || userEmail === 'emy@toniosenora.com';
 
-    if (role !== 'ADMIN' && role !== 'SALES_TEAM_HEAD' && !isEmy) {
-      return res.status(403).json({ error: 'Admin, Sales Team Head, or Emy access required' });
-    }
-
     const staffId = Number(req.params.id);
     if (Number.isNaN(staffId)) {
       console.error('❌ Invalid staff ID provided:', req.params.id);
       return res.status(400).json({ error: 'Invalid staff id' });
+    }
+
+    // Allow users to view their OWN dashboard regardless of role
+    const isOwnDashboard = userId === staffId;
+
+    if (role !== 'ADMIN' && role !== 'SALES_TEAM_HEAD' && !isEmy && !isOwnDashboard) {
+      return res.status(403).json({ error: 'Admin, Sales Team Head, Emy, or own dashboard access required' });
     }
 
     console.log('🔍 Fetching dashboard for staff ID:', staffId);

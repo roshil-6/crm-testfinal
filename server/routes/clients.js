@@ -98,9 +98,19 @@ router.get('/', authenticate, async (req, res) => {
     }
 
     // Filter by assigned_staff_id if provided (for Sneha dashboard)
-    if (req.query.assigned_staff_id) {
+    // IMPORTANT: If this is Sneha or Kripa, we don't apply this filter strictly at the DB level
+    // because they might be assigned via processing_staff_id instead. 
+    // We will do the specific filtering in memory later.
+    const userNameRaw = (req.user.name || '').toLowerCase();
+    const userEmailRaw = (req.user.email || '').toLowerCase();
+    const isProcessingStaff = userNameRaw === 'sneha' || userNameRaw === 'kripa' ||
+      userEmailRaw === 'sneha@toniosenora.com' || userEmailRaw === 'kripa@toniosenora.com';
+
+    if (req.query.assigned_staff_id && !isProcessingStaff) {
       filter.assigned_staff_id = Number(req.query.assigned_staff_id);
-      console.log('🔍 Filtering clients by assigned_staff_id:', filter.assigned_staff_id);
+      console.log('🔍 Filtering clients by assigned_staff_id (Non-processing staff):', filter.assigned_staff_id);
+    } else if (req.query.assigned_staff_id) {
+      console.log('🔍 Filtering clients for processing staff - skipping strict DB filter for assigned_staff_id');
     }
 
     if (search) {
@@ -405,10 +415,10 @@ router.put('/:id', authenticate, async (req, res) => {
     // Check access - Sneha and Kripa have full edit access
     const assignedId = existingClient.assigned_staff_id ? Number(existingClient.assigned_staff_id) : null;
     const processingId = existingClient.processing_staff_id ? Number(existingClient.processing_staff_id) : null;
-    const userName = req.user.name || '';
-    const userEmail = req.user.email || '';
-    const isSneha = userName === 'Sneha' || userName === 'SNEHA' || userEmail === 'sneha@toniosenora.com';
-    const isKripa = userName === 'Kripa' || userName === 'KRIPA' || userEmail === 'kripa@toniosenora.com';
+    const userName = (req.user.name || '').toLowerCase().trim();
+    const userEmail = (req.user.email || '').toLowerCase().trim();
+    const isSneha = userName === 'sneha' || userEmail === 'sneha@toniosenora.com';
+    const isKripa = userName === 'kripa' || userEmail === 'kripa@toniosenora.com';
 
     if (role === 'STAFF' || role === 'SALES_TEAM' || role === 'PROCESSING') {
       if (!isSneha && !isKripa) {
