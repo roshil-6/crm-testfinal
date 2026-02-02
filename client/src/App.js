@@ -5,8 +5,11 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Leads from './pages/Leads';
 import LeadDetail from './pages/LeadDetail';
+import Clients from './pages/Clients';
 import Attendance from './pages/Attendance';
 import UserManagement from './pages/UserManagement';
+import BulkImport from './pages/BulkImport';
+import EmailTemplates from './pages/EmailTemplates';
 import PrivateRoute from './components/PrivateRoute';
 import Layout from './components/Layout';
 
@@ -18,6 +21,16 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route
             path="/"
+            element={
+              <PrivateRoute>
+                <Layout>
+                  <Dashboard />
+                </Layout>
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/dashboard/staff/:staffId"
             element={
               <PrivateRoute>
                 <Layout>
@@ -47,6 +60,26 @@ function App() {
             }
           />
           <Route
+            path="/clients"
+            element={
+              <PrivateRoute>
+                <Layout>
+                  <Clients />
+                </Layout>
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/clients/:id"
+            element={
+              <PrivateRoute>
+                <Layout>
+                  <Clients />
+                </Layout>
+              </PrivateRoute>
+            }
+          />
+          <Route
             path="/attendance"
             element={
               <PrivateRoute>
@@ -62,6 +95,26 @@ function App() {
               <PrivateRoute>
                 <Layout>
                   <UserManagement />
+                </Layout>
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/leads/import"
+            element={
+              <PrivateRoute>
+                <Layout>
+                  <BulkImport />
+                </Layout>
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/email-templates"
+            element={
+              <PrivateRoute>
+                <Layout>
+                  <EmailTemplates />
                 </Layout>
               </PrivateRoute>
             }

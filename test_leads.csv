@@ -1,0 +1,6 @@
+name,phone_number,email,status,source,comment
+John Doe,9876543210,john.doe@example.com,New,Website,Interested in MBA program
+Jane Smith,9876543211,jane.smith@example.com,Follow-up,Facebook,Follow up scheduled
+Bob Johnson,9876543212,bob.johnson@example.com,Prospect,Referral,Referred by friend
+Alice Williams,9876543213,alice.williams@example.com,New,Google Ads,Looking for study abroad options
+Mike Brown,9876543214,mike.brown@example.com,Follow-up,Website,Completed IELTS

@@ -8,19 +8,20 @@ const router = express.Router();
 router.get('/', authenticate, async (req, res) => {
   try {
     const userId = req.user.id;
-    const notifications = db.getNotifications({ user_id: userId });
+    const notifications = await db.getNotifications({ user_id: userId });
     
     // Add lead name if available
-    const notificationsWithDetails = notifications.map(notification => {
+    const notificationsWithDetails = await Promise.all(notifications.map(async notification => {
       const notificationData = { ...notification };
       if (notification.lead_id) {
-        const lead = db.getLeads({ id: notification.lead_id })[0];
+        const leads = await db.getLeads({ id: notification.lead_id });
+        const lead = leads[0];
         if (lead) {
           notificationData.lead_name = lead.name;
         }
       }
       return notificationData;
-    });
+    }));
     
     res.json(notificationsWithDetails);
   } catch (error) {
@@ -33,7 +34,7 @@ router.get('/', authenticate, async (req, res) => {
 router.get('/unread/count', authenticate, async (req, res) => {
   try {
     const userId = req.user.id;
-    const unreadNotifications = db.getNotifications({ user_id: userId, read: false });
+    const unreadNotifications = await db.getNotifications({ user_id: userId, read: false });
     res.json({ count: unreadNotifications.length });
   } catch (error) {
     console.error('Get unread count error:', error);
@@ -47,7 +48,8 @@ router.put('/:id/read', authenticate, async (req, res) => {
     const userId = req.user.id;
     const notificationId = parseInt(req.params.id);
     
-    const notification = db.getNotifications({ id: notificationId })[0];
+    const notifications = await db.getNotifications({ id: notificationId });
+    const notification = notifications[0];
     if (!notification) {
       return res.status(404).json({ error: 'Notification not found' });
     }
@@ -57,7 +59,7 @@ router.put('/:id/read', authenticate, async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     }
     
-    const updatedNotification = db.markNotificationAsRead(notificationId);
+    const updatedNotification = await db.markNotificationAsRead(notificationId);
     res.json(updatedNotification);
   } catch (error) {
     console.error('Mark notification as read error:', error);
@@ -69,7 +71,7 @@ router.put('/:id/read', authenticate, async (req, res) => {
 router.put('/read-all', authenticate, async (req, res) => {
   try {
     const userId = req.user.id;
-    const updatedNotifications = db.markAllNotificationsAsRead(userId);
+    const updatedNotifications = await db.markAllNotificationsAsRead(userId);
     res.json({ message: 'All notifications marked as read', count: updatedNotifications.length });
   } catch (error) {
     console.error('Mark all notifications as read error:', error);

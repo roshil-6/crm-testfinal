@@ -1,155 +1,180 @@
 # Tonio & Senora CRM System
 
-A comprehensive Customer Relationship Management (CRM) system built with React and Node.js.
+A comprehensive Customer Relationship Management system built with Node.js, Express, React, and PostgreSQL.
 
-## Features
-
-- ✅ **User Role Management**: Admin, Sales Team Head, Sales Team, Processing
-- ✅ **Lead Management**: Create, assign, and track leads
-- ✅ **Notification System**: Real-time notifications when leads are assigned
-- ✅ **Attendance Tracking**: Check-in/check-out functionality
-- ✅ **Team Management**: Sales team heads can manage their teams
-- ✅ **Interactive UI**: Golden animated background lines
-- ✅ **Search Functionality**: Search leads by name, phone, email, or staff member
-
-## Tech Stack
-
-- **Frontend**: React 18, React Router, Axios
-- **Backend**: Node.js, Express.js
-- **Database**: JSON file-based (server/data/crm.json)
-- **Authentication**: JWT tokens
-
-## Quick Start
+## 🚀 Quick Start
 
 ### Prerequisites
-- Node.js 18+ installed
+- Node.js (v14 or higher)
+- PostgreSQL database (Railway, Supabase, or local)
 - npm or yarn
 
 ### Installation
 
-1. Clone the repository:
-```bash
-git clone https://github.com/roshil-6/CRM-.git
-cd CRM
-```
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/roshil-6/crm-testfinal.git
+   cd crm-testfinal
+   ```
 
-2. Install dependencies:
-```bash
-# Backend
-cd server
-npm install
+2. **Install dependencies**
+   ```bash
+   # Backend
+   cd server
+   npm install
+   
+   # Frontend
+   cd ../client
+   npm install
+   ```
 
-# Frontend
-cd ../client
-npm install
-```
+3. **Set up environment variables**
+   ```bash
+   # Copy the example file
+   cd ../server
+   cp .env.example .env
+   
+   # Edit .env and add your:
+   # - DATABASE_URL (PostgreSQL connection string)
+   # - JWT_SECRET (a strong random string)
+   # - PORT (default: 5002)
+   ```
 
-3. Create users:
-```bash
-cd server
-node scripts/createAllUsers.js
-```
+4. **Initialize the database**
+   ```bash
+   cd server
+   npm run init-db
+   npm run create-all-users
+   ```
 
-4. Start the application:
+5. **Start the application**
+   ```bash
+   # Option 1: Use the batch file (Windows)
+   # Double-click: START_EVERYTHING.bat
+   
+   # Option 2: Manual start
+   # Terminal 1 - Backend
+   cd server
+   node index.js
+   
+   # Terminal 2 - Frontend
+   cd client
+   npm start
+   ```
 
-**Terminal 1 - Backend:**
-```bash
-cd server
-npm start
-```
+6. **Access the application**
+   - Frontend: http://localhost:3000
+   - Backend API: http://localhost:5002
 
-**Terminal 2 - Frontend:**
-```bash
-cd client
-npm start
-```
+## 📋 Features
 
-5. Access the application:
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:5001
+- **Lead Management**: Create, update, and track leads
+- **Bulk Import**: Import leads from CSV/Excel files (including Meta Ads format)
+- **Client Management**: Convert leads to clients and manage client information
+- **User Management**: Role-based access control with multiple user roles
+- **Dashboard**: Comprehensive analytics and performance tracking
+- **Attendance Tracking**: Monitor staff check-in/check-out times
+- **Notifications**: Real-time notifications for lead assignments and updates
+- **Email Templates**: Manage and schedule follow-up emails
 
-## User Credentials
+## 👥 User Roles
 
-See [USER_CREDENTIALS_SUMMARY.md](./USER_CREDENTIALS_SUMMARY.md) for all user credentials.
+- **ADMIN**: Full system access
+- **SALES_TEAM_HEAD**: Manage team and view team performance
+- **SALES_TEAM**: Manage assigned leads
+- **PROCESSING**: Handle processing tasks
 
-## Quick Deployment (Get Demo Link in 2 Minutes)
+## 🔒 Security
 
-### 🚀 Deploy to Vercel (Recommended)
+- Passwords are hashed using bcrypt
+- JWT-based authentication
+- Role-based access control (RBAC)
+- Environment variables for sensitive data
+- SQL injection protection via parameterized queries
 
-**Option 1: One-Click Deploy**
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/roshil-6/CRM-&root-directory=client)
-
-**Option 2: Manual Deploy**
-1. Go to [Vercel](https://vercel.com/new)
-2. Import repository: `roshil-6/CRM-`
-3. **Set Root Directory to**: `client`
-4. Add environment variable: `REACT_APP_API_URL` = your backend URL
-5. Click Deploy → Get your demo link!
-
-See [QUICK_DEPLOY.md](./QUICK_DEPLOY.md) for detailed instructions.
-
-### 📋 Full Deployment Guide
-
-See [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md) for detailed deployment instructions for Vercel and Netlify.
-
-### Quick Deployment Notes:
-
-**For Vercel/Netlify:**
-- Set **Root Directory** to `client`
-- Set **Build Command** to `npm install && npm run build`
-- Set **Output Directory** to `build`
-- Add environment variable: `REACT_APP_API_URL` (your backend URL)
-
-**Backend Deployment:**
-- Deploy to Heroku, Railway, Render, or DigitalOcean
-- Backend requires file system access for JSON database
-
-## Project Structure
+## 📁 Project Structure
 
 ```
 CRM/
-├── client/                 # React frontend
-│   ├── src/
-│   │   ├── components/     # Reusable components
-│   │   ├── pages/          # Page components
-│   │   ├── context/        # React context
-│   │   └── config/        # Configuration
-│   └── public/            # Static files
-├── server/                 # Node.js backend
-│   ├── routes/            # API routes
-│   ├── config/            # Database config
-│   ├── middleware/        # Auth middleware
-│   ├── scripts/           # Utility scripts
-│   └── data/              # JSON database
-└── Documentation files
+├── client/          # React frontend
+├── server/          # Node.js/Express backend
+│   ├── config/      # Database configuration
+│   ├── routes/      # API routes
+│   ├── middleware/  # Authentication middleware
+│   ├── scripts/     # Utility scripts
+│   └── services/    # Business logic services
+└── README.md
 ```
 
-## Key Features
+## 🛠️ Available Scripts
 
-### Role-Based Access Control
-- **Admin**: Full access to all data
-- **Sales Team Head**: Access to own team's data only
-- **Sales Team**: Access to own data only
-- **Processing**: Access to own data only
+### Backend (server/)
+- `npm start` - Start the server
+- `npm run init-db` - Initialize PostgreSQL database schema
+- `npm run create-all-users` - Create all default users
+- `npm run migrate-columns` - Add missing columns to existing database
 
-### Notification System
-- Bell icon in navigation bar
-- Notifications when leads are assigned
-- Unread count badge
-- Mark as read functionality
+### Frontend (client/)
+- `npm start` - Start development server
+- `npm build` - Build for production
 
-### Team Management
-- Sales team members assigned to team heads
-- Team heads can view their team's dashboards
-- Isolated data access per team
+## 📝 API Documentation
 
-## Documentation
+### Authentication
+- `POST /api/auth/login` - User login
+- `GET /api/auth/me` - Get current user
 
-- [User Credentials Summary](./USER_CREDENTIALS_SUMMARY.md)
-- [Deployment Guide](./DEPLOYMENT_GUIDE.md)
-- [User Roles Implementation](./USER_ROLES_IMPLEMENTATION.md)
-- [How to Start](./HOW_TO_START.md)
+### Leads
+- `GET /api/leads` - Get all leads (filtered by role)
+- `POST /api/leads` - Create new lead
+- `PUT /api/leads/:id` - Update lead
+- `POST /api/leads/bulk-import` - Bulk import leads from CSV/Excel
+- `POST /api/leads/bulk-assign` - Bulk assign leads to staff
 
-## License
+### Dashboard
+- `GET /api/dashboard` - Get dashboard data (role-based)
+- `GET /api/dashboard/staff/:id` - Get staff performance data
 
-Private project for Tonio & Senora
+## 🔧 Configuration
+
+### Database
+The application uses PostgreSQL. Set up your database connection in `server/.env`:
+
+```env
+DATABASE_URL=postgresql://user:password@host:port/database
+```
+
+### Ports
+- Backend: 5002 (configurable via `PORT` in `.env`)
+- Frontend: 3000 (React default)
+
+## 🐛 Troubleshooting
+
+### Server won't start
+1. Check that PostgreSQL database is accessible
+2. Verify `DATABASE_URL` in `server/.env` is correct
+3. Ensure port 5002 is not in use
+4. Check server logs for error messages
+
+### Login fails
+1. Verify users exist in database: `npm run create-all-users`
+2. Check backend is running on correct port
+3. Verify JWT_SECRET is set in `.env`
+
+### Database connection errors
+1. Verify DATABASE_URL format is correct
+2. Check database server is running
+3. Verify network connectivity
+4. Check SSL settings if using cloud database
+
+## 📄 License
+
+This project is proprietary software for Tonio & Senora.
+
+## 👨‍💻 Development
+
+For development setup and contribution guidelines, see the development documentation.
+
+---
+
+**Note**: Never commit `.env` files or sensitive credentials to version control.

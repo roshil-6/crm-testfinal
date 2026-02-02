@@ -18,6 +18,14 @@ DB_PORT=5432
 DB_NAME=tonio_senora_crm
 DB_USER=postgres
 DB_PASSWORD=postgres
+
+# Email Configuration (SMTP)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=your-email@gmail.com
+SMTP_PASSWORD=your-app-password
+SMTP_FROM=your-email@gmail.com
 `;
 
 if (fs.existsSync(envExamplePath)) {

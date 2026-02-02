@@ -9,7 +9,7 @@ const router = express.Router();
 // Get all users (ADMIN only)
 router.get('/', authenticate, requireAdmin, async (req, res) => {
   try {
-    const users = db.getUsers();
+    const users = await db.getUsers();
     const userList = users.map(u => ({
       id: u.id,
       name: u.name,
@@ -46,7 +46,7 @@ router.post(
       const createdBy = req.user.id;
 
       // Check if email already exists
-      const existingUsers = db.getUsers({ email });
+      const existingUsers = await db.getUsers({ email });
       if (existingUsers.length > 0) {
         return res.status(400).json({ error: 'Email already exists' });
       }
@@ -55,7 +55,7 @@ router.post(
       const hashedPassword = await bcrypt.hash(password, 10);
 
       // Create user
-      const newUser = db.createUser({
+      const newUser = await db.createUser({
         name,
         email,
         password: hashedPassword,
@@ -66,7 +66,7 @@ router.post(
       });
 
       // Log user creation activity
-      logActivity({
+      await logActivity({
         type: 'user_created',
         user_id: createdBy,
         target_user_id: newUser.id,
@@ -100,7 +100,7 @@ router.put('/:id', authenticate, requireAdmin, async (req, res) => {
     if (name !== undefined) updates.name = name;
     if (email !== undefined) {
       // Check if email is already taken by another user
-      const emailUsers = db.getUsers({ email });
+      const emailUsers = await db.getUsers({ email });
       if (emailUsers.length > 0 && emailUsers[0].id !== userId) {
         return res.status(400).json({ error: 'Email already exists' });
       }
@@ -113,14 +113,14 @@ router.put('/:id', authenticate, requireAdmin, async (req, res) => {
       updates.role = role;
     }
 
-    const updatedUser = db.updateUser(userId, updates);
+    const updatedUser = await db.updateUser(userId, updates);
     if (!updatedUser) {
       return res.status(404).json({ error: 'User not found' });
     }
     const { password: _, ...userWithoutPassword } = updatedUser;
 
     // Log activity
-    logActivity({
+    await logActivity({
       type: 'user_updated',
       user_id: req.user.id,
       target_user_id: userId,
@@ -152,13 +152,10 @@ router.delete('/:id', authenticate, requireAdmin, async (req, res) => {
     const userToDelete = users[0];
 
     // Remove user from database
-    const dbData = db.db;
-    const filteredUsers = dbData.users.filter(u => u.id !== userId);
-    dbData.users = filteredUsers;
-    db.save();
+    await db.deleteUser(userId);
 
     // Log activity
-    logActivity({
+    await logActivity({
       type: 'user_deleted',
       user_id: req.user.id,
       target_user_id: userId,
@@ -175,7 +172,7 @@ router.delete('/:id', authenticate, requireAdmin, async (req, res) => {
 // Get activity logs (ADMIN only)
 router.get('/activity/logs', authenticate, requireAdmin, async (req, res) => {
   try {
-    const logs = db.getActivityLogs();
+    const logs = await db.getActivityLogs();
     res.json(logs);
   } catch (error) {
     console.error('Get activity logs error:', error);
@@ -191,7 +188,7 @@ router.get('/login/logs', authenticate, requireAdmin, async (req, res) => {
     if (email) filter.email = email;
     if (success !== undefined) filter.success = success === 'true';
     
-    const logs = db.getLoginLogs(filter);
+    const logs = await db.getLoginLogs(filter);
     const limitedLogs = logs.slice(0, parseInt(limit));
     res.json(limitedLogs);
   } catch (error) {
@@ -200,17 +197,67 @@ router.get('/login/logs', authenticate, requireAdmin, async (req, res) => {
   }
 });
 
-// Helper function to log activities
-function logActivity(activity) {
-  const dbData = db.db;
-  if (!dbData.activityLogs) {
-    dbData.activityLogs = [];
+// Export users to CSV (for Google Sheets import)
+router.get('/export/csv', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const users = await db.getUsers();
+
+    // Convert to CSV
+    const headers = [
+      'ID',
+      'Name',
+      'Email',
+      'Role',
+      'Team',
+      'Managed By',
+      'Created At',
+      'Updated At'
+    ];
+
+    const csvRows = [headers.join(',')];
+
+    // Process users sequentially to fetch manager names
+    for (const user of users) {
+      // Get manager name if exists
+      let managerName = '';
+      if (user.managed_by) {
+        const managers = await db.getUsers({ id: user.managed_by });
+        const manager = managers[0];
+        if (manager) {
+          managerName = manager.name;
+        }
+      }
+
+      const row = [
+        user.id || '',
+        `"${(user.name || '').replace(/"/g, '""')}"`,
+        user.email || '',
+        user.role || '',
+        user.team || '',
+        `"${managerName.replace(/"/g, '""')}"`,
+        user.created_at || '',
+        user.updated_at || ''
+      ];
+      csvRows.push(row.join(','));
+    }
+
+    const csvContent = csvRows.join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="users_export_${new Date().toISOString().split('T')[0]}.csv"`);
+    res.send(csvContent);
+  } catch (error) {
+    console.error('Export users error:', error);
+    res.status(500).json({ error: 'Server error', details: error.message });
   }
-  dbData.activityLogs.push({
+});
+
+// Helper function to log activities
+async function logActivity(activity) {
+  await db.createActivityLog({
     ...activity,
     timestamp: new Date().toISOString(),
   });
-  db.save();
 }
 
 module.exports = router;

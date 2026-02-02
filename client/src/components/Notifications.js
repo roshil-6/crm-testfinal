@@ -42,18 +42,20 @@ const Notifications = () => {
   const fetchNotifications = async () => {
     try {
       const response = await axios.get(`${API_BASE_URL}/api/notifications`);
-      setNotifications(response.data);
+      setNotifications(response.data || []);
     } catch (error) {
       console.error('Error fetching notifications:', error);
+      setNotifications([]);
     }
   };
 
   const fetchUnreadCount = async () => {
     try {
       const response = await axios.get(`${API_BASE_URL}/api/notifications/unread/count`);
-      setUnreadCount(response.data.count);
+      setUnreadCount(response.data?.count || 0);
     } catch (error) {
       console.error('Error fetching unread count:', error);
+      setUnreadCount(0);
     }
   };
 

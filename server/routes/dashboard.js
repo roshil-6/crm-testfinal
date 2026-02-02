@@ -4,8 +4,39 @@ const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
 
+function getDateOnly(value) {
+  if (!value) return null;
+  return value.split('T')[0];
+}
+
+function buildLeadMetrics(leads) {
+  const today = new Date().toISOString().split('T')[0];
+  const isActiveStatus = (status) => status !== 'Pending Lead' && status !== 'Closed / Rejected';
+
+  const todayFollowups = leads.filter(l => {
+    const followDate = getDateOnly(l.follow_up_date);
+    return followDate === today && isActiveStatus(l.status);
+  }).length;
+
+  const dueFollowups = leads.filter(l => {
+    const followDate = getDateOnly(l.follow_up_date);
+    return followDate && followDate < today && isActiveStatus(l.status);
+  }).length;
+
+  return {
+    totalLeads: leads.length,
+    newLeads: leads.filter(l => l.status === 'New').length,
+    followupLeads: leads.filter(l => l.status === 'Follow-up').length,
+    processingLeads: leads.filter(l => l.status === 'Prospect').length,
+    convertedLeads: leads.filter(l => l.status === 'Pending Lead').length,
+    closedLeads: leads.filter(l => l.status === 'Closed / Rejected').length,
+    todayFollowups,
+    dueFollowups,
+  };
+}
+
 // Helper function to get accessible user IDs based on role
-function getAccessibleUserIds(user) {
+async function getAccessibleUserIds(user) {
   const role = user.role;
   const userId = user.id;
   
@@ -14,7 +45,7 @@ function getAccessibleUserIds(user) {
     return null; // null means all users
   } else if (role === 'SALES_TEAM_HEAD') {
     // Sales team head sees themselves + only their team members (those managed by them)
-    const teamMembers = db.getUsers({ managed_by: userId });
+    const teamMembers = await db.getUsers({ managed_by: userId });
     return [userId, ...teamMembers.map(u => u.id)];
   } else if (role === 'SALES_TEAM' || role === 'PROCESSING') {
     // Sales team and processing see only themselves
@@ -27,72 +58,255 @@ function getAccessibleUserIds(user) {
   return [userId]; // Default: only self
 }
 
+// Get staff-specific dashboard data (admin, sales team head, and Emy for monitoring)
+router.get('/staff/:id', authenticate, async (req, res) => {
+  try {
+    // SQLite doesn't need loadDatabase - data is always fresh
+    const role = req.user.role;
+    const userId = req.user.id;
+    const userName = req.user.name || '';
+    const userEmail = req.user.email || '';
+    
+    // Check if user is Emy
+    const isEmy = userName === 'Emy' || userName === 'EMY' || userEmail === 'emy@toniosenora.com';
+    
+    if (role !== 'ADMIN' && role !== 'SALES_TEAM_HEAD' && !isEmy) {
+      return res.status(403).json({ error: 'Admin, Sales Team Head, or Emy access required' });
+    }
+
+    const staffId = Number(req.params.id);
+    if (Number.isNaN(staffId)) {
+      console.error('❌ Invalid staff ID provided:', req.params.id);
+      return res.status(400).json({ error: 'Invalid staff id' });
+    }
+
+    console.log('🔍 Fetching dashboard for staff ID:', staffId);
+    const staffUsers = await db.getUsers({ id: staffId });
+    const staffUser = staffUsers[0];
+    
+    // Check if this is Sneha or Kripa (they can be ADMIN but are also processing team)
+    const isSneha = staffUser && (staffUser.name === 'Sneha' || staffUser.name === 'SNEHA' || staffUser.email === 'sneha@toniosenora.com');
+    const isKripa = staffUser && (staffUser.name === 'Kripa' || staffUser.name === 'KRIPA' || staffUser.email === 'kripa@toniosenora.com');
+    const isProcessingTeam = isSneha || isKripa;
+    
+    if (!staffUser) {
+      console.error('❌ Staff member not found:', { staffId });
+      return res.status(404).json({ error: 'Staff member not found' });
+    }
+    
+    // Allow Sneha and Kripa even if they're ADMIN (they're processing team members)
+    if (staffUser.role === 'ADMIN' && !isProcessingTeam) {
+      console.error('❌ Staff member is admin (not processing team):', { staffId, name: staffUser.name, role: staffUser.role });
+      return res.status(404).json({ error: 'Staff member not found' });
+    }
+
+    console.log('✅ Found staff member:', { id: staffUser.id, name: staffUser.name, email: staffUser.email });
+
+    // Emy can only monitor specific staff: Karthika, Jibina, Asna, Shilpa
+    if (isEmy) {
+      const allowedStaffNames = ['Karthika', 'Jibina', 'Asna', 'Shilpa'];
+      if (!allowedStaffNames.includes(staffUser.name)) {
+        return res.status(403).json({ error: 'Access denied. You can only monitor Karthika, Jibina, Asna, and Shilpa dashboards' });
+      }
+    }
+
+    // Sales team head can only access their own dashboard or their team members' dashboards
+    if (role === 'SALES_TEAM_HEAD') {
+      if (staffId !== userId) {
+        // Check if the staff member is in their team
+        const teamMembers = await db.getUsers({ managed_by: userId, id: staffId });
+        if (teamMembers.length === 0) {
+          return res.status(403).json({ error: 'Access denied. You can only view your own dashboard or your team members\' dashboards' });
+        }
+      }
+    }
+
+    // isSneha, isKripa, and isProcessingTeam are already declared above (lines 89-91)
+
+    if (isProcessingTeam) {
+      // Processing Team Dashboard - Show client processing data
+      let processingClients = [];
+      
+      if (isSneha) {
+        // Sneha's clients (assigned to her)
+        processingClients = await db.getClients({ assigned_staff_id: staffId });
+      } else if (isKripa) {
+        // Kripa's clients (assigned for processing)
+        processingClients = await db.getClients({ processing_staff_id: staffId });
+      }
+
+      // Calculate processing metrics
+      const processingMetrics = {
+        totalClients: processingClients.length,
+        paymentPending: processingClients.filter(c => c.fee_status === 'Payment Pending').length,
+        firstInstallmentCompleted: processingClients.filter(c => c.fee_status === '1st Installment Completed').length,
+        pteFeePaid: processingClients.filter(c => c.fee_status === 'PTE Fee Paid').length,
+        withSneha: isSneha ? processingClients.length : 0,
+        withKripa: isKripa ? processingClients.length : 0,
+      };
+
+      // Get client details for display
+      const clientsList = processingClients.map(client => ({
+        id: client.id,
+        name: client.name,
+        phone_number: client.phone_number,
+        phone_country_code: client.phone_country_code,
+        email: client.email,
+        fee_status: client.fee_status,
+        amount_paid: client.amount_paid,
+        payment_due_date: client.payment_due_date,
+        processing_status: client.processing_status,
+        created_at: client.created_at,
+        updated_at: client.updated_at,
+      }));
+
+      res.json({
+        role: role,
+        isReadOnly: isEmy,
+        isProcessingTeam: true,
+        processingRole: isSneha ? 'sneha' : 'kripa',
+        staff: {
+          id: staffUser.id,
+          name: staffUser.name,
+          email: staffUser.email,
+        },
+        metrics: processingMetrics,
+        clientsList,
+      });
+    } else {
+      // Regular Staff Dashboard - Show lead metrics
+      const staffLeads = await db.getLeads({ assigned_staff_id: staffId });
+      const metrics = buildLeadMetrics(staffLeads);
+
+      // Get all leads with details for this staff member
+      const leadsList = staffLeads.map(lead => ({
+        id: lead.id,
+        name: lead.name,
+        phone_number: lead.phone_number,
+        phone_country_code: lead.phone_country_code,
+        email: lead.email,
+        status: lead.status,
+        priority: lead.priority,
+        comment: lead.comment,
+        follow_up_date: lead.follow_up_date,
+        created_at: lead.created_at,
+        updated_at: lead.updated_at,
+      }));
+
+      console.log('📤 Sending regular staff dashboard:', {
+        staffId: staffUser.id,
+        staffName: staffUser.name,
+        leadsCount: staffLeads.length
+      });
+
+      res.json({
+        role: role,
+        isReadOnly: isEmy,
+        isProcessingTeam: false,
+        staff: {
+          id: staffUser.id,
+          name: staffUser.name,
+          email: staffUser.email,
+        },
+        metrics,
+        leadsList,
+      });
+    }
+  } catch (error) {
+    console.error('Staff dashboard error:', error);
+    res.status(500).json({ error: 'Server error', details: error.message });
+  }
+});
+
 // Get dashboard data
 router.get('/', authenticate, async (req, res) => {
+  // Set cache-control header to prevent caching
+  res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
   try {
+    // SQLite doesn't need loadDatabase - data is always fresh
     const userId = req.user.id;
     const role = req.user.role;
-    const accessibleUserIds = getAccessibleUserIds(req.user);
+    const accessibleUserIds = await getAccessibleUserIds(req.user);
 
-    // Determine if this is a restricted view (not admin)
-    const isRestrictedView = role !== 'ADMIN';
+    // Determine if this is a restricted view (not admin and not sales team head)
+    // Sales team head should see the full dashboard with staff performance
+    const isRestrictedView = role !== 'ADMIN' && role !== 'SALES_TEAM_HEAD';
 
     if (isRestrictedView) {
       // Restricted view - only accessible leads
       let allLeads = [];
       if (accessibleUserIds) {
-        accessibleUserIds.forEach(staffId => {
-          const staffLeads = db.getLeads({ assigned_staff_id: staffId });
+        for (const staffId of accessibleUserIds) {
+          const staffLeads = await db.getLeads({ assigned_staff_id: staffId });
           allLeads = [...allLeads, ...staffLeads];
-        });
+        }
       }
       
+      // Get clients for restricted view
+      const restrictedClients = await db.getClients();
+      
       const metrics = {
-        totalLeads: allLeads.length,
-        newLeads: allLeads.filter(l => l.status === 'New').length,
-        followupLeads: allLeads.filter(l => l.status === 'Follow-up').length,
-        processingLeads: allLeads.filter(l => l.status === 'Under Processing').length,
-        convertedLeads: allLeads.filter(l => l.status === 'Converted').length,
-        closedLeads: allLeads.filter(l => l.status === 'Closed / Rejected').length,
+        ...buildLeadMetrics(allLeads),
+        totalClients: restrictedClients.length,
+        leadsByStatus: {
+          'New': allLeads.filter(l => l.status === 'New').length,
+          'Follow-up': allLeads.filter(l => l.status === 'Follow-up').length,
+          'Prospect': allLeads.filter(l => l.status === 'Prospect').length,
+          'Pending Lead': allLeads.filter(l => l.status === 'Pending Lead').length,
+          'Not Eligible': allLeads.filter(l => l.status === 'Not Eligible').length,
+          'Not Interested': allLeads.filter(l => l.status === 'Not Interested').length,
+          'Registration Completed': allLeads.filter(l => l.status === 'Registration Completed').length, // Count from actual leads
+        },
+        clientsByStatus: {
+          'Total Clients': restrictedClients.length,
+          'With Sneha': restrictedClients.filter(c => c.assigned_staff_id === 12).length, // Sneha's ID is 12
+          'With Kripa': restrictedClients.filter(c => c.processing_staff_id === 8).length, // Kripa's ID is 8
+          'Payment Pending': restrictedClients.filter(c => c.fee_status === 'Payment Pending').length,
+          '1st Installment Completed': restrictedClients.filter(c => c.fee_status === '1st Installment Completed').length,
+          'PTE Fee Paid': restrictedClients.filter(c => c.fee_status === 'PTE Fee Paid').length,
+        },
       };
 
-      // Today's follow-ups
-      const today = new Date().toISOString().split('T')[0];
-      const todayFollowups = allLeads.filter(l => 
-        l.status === 'Follow-up' && 
-        (l.updated_at || l.created_at)?.split('T')[0] === today
-      ).length;
+      // Log for debugging
+      console.log('📊 Restricted view dashboard metrics:');
+      console.log('  Total leads:', allLeads.length);
+      console.log('  Total clients:', restrictedClients.length);
+      console.log('  Registration Completed count:', metrics.leadsByStatus['Registration Completed']);
 
       // Recent activity
-      const recentLeads = allLeads
-        .slice(0, 5)
-        .map(l => ({
-          type: 'status_change',
-          lead_id: l.id,
-          lead_name: l.name,
-          status: l.status,
-          timestamp: l.updated_at || l.created_at,
-          user_name: db.getUserName(l.assigned_staff_id) || 'Unknown',
-        }));
+      const recentLeadsPromises = allLeads.slice(0, 5).map(async l => ({
+        type: 'status_change',
+        lead_id: l.id,
+        lead_name: l.name,
+        status: l.status,
+        timestamp: l.updated_at || l.created_at,
+        user_name: await db.getUserName(l.assigned_staff_id) || 'Unknown',
+      }));
+      const recentLeads = await Promise.all(recentLeadsPromises);
 
-      const allComments = db.getComments(null);
-      const userComments = allComments
-        .filter(c => {
-          const lead = db.getLeads({ id: c.lead_id })[0];
-          return lead && lead.assigned_staff_id === userId;
-        })
+      const allComments = await db.getComments(null);
+      const userCommentsPromises = allComments
+        .filter(c => c.lead_id)
         .slice(0, 5)
-        .map(c => {
-          const lead = db.getLeads({ id: c.lead_id })[0];
+        .map(async c => {
+          const leads = await db.getLeads({ id: c.lead_id });
+          const lead = leads[0];
+          if (!lead || !lead.assigned_staff_id || Number(lead.assigned_staff_id) !== Number(userId)) {
+            return null;
+          }
+          const userName = await db.getUserName(c.user_id) || 'Unknown';
           return {
             type: 'comment',
             lead_id: c.lead_id,
             lead_name: lead?.name || 'Unknown',
             status: null,
             timestamp: c.created_at,
-            user_name: db.getUserName(c.author_id) || 'Unknown',
+            user_name: userName,
           };
         });
+      const userComments = (await Promise.all(userCommentsPromises)).filter(c => c !== null);
 
       const allActivity = [...recentLeads, ...userComments]
         .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
@@ -100,40 +314,197 @@ router.get('/', authenticate, async (req, res) => {
 
       res.json({
         role: role,
-        metrics: {
-          ...metrics,
-          todayFollowups,
-        },
+        metrics,
         recentActivity: allActivity,
       });
     } else {
-      // ADMIN dashboard - company-wide data
-      const allLeads = db.getLeads();
-      const allUsers = db.getUsers();
-      const allAttendance = db.getAttendance();
+      // ADMIN or SALES_TEAM_HEAD dashboard
+      let allLeads = [];
+      let allUsers = [];
+      
+      if (role === 'ADMIN') {
+        // Admin sees all leads and all users
+        allLeads = await db.getLeads();
+        allUsers = await db.getUsers();
+        console.log('📊 After reload - Leads count:', allLeads.length);
+        const allClientsCount = await db.getClients();
+        console.log('📊 After reload - Clients count:', allClientsCount.length);
+        console.log('📊 After reload - All users count:', allUsers.length);
+        console.log('📊 All users:', allUsers.map(u => ({ id: u.id, name: u.name, email: u.email, role: u.role })));
+        // Check if Sneha exists in allUsers
+        const snehaUser = allUsers.find(u => 
+          u.name === 'Sneha' || u.name === 'SNEHA' || u.email === 'sneha@toniosenora.com'
+        );
+        console.log('📊 Sneha user found?', snehaUser ? `Yes - ID: ${snehaUser.id}, Name: ${snehaUser.name}, Role: ${snehaUser.role}` : 'No - Sneha not found in database!');
+      } else if (role === 'SALES_TEAM_HEAD') {
+        // Sales team head sees leads assigned to themselves and ALL sales team members
+        // Get ALL sales team members (not just their own team)
+        const allSalesTeamMembers = await db.getUsers({ role: 'SALES_TEAM' });
+        console.log('📊 Sales Team Head Dashboard:');
+        console.log('  Team Head ID:', userId);
+        console.log('  Team Head Name:', req.user.name);
+        console.log('  Team Head Email:', req.user.email);
+        console.log('  All Sales Team Members Found:', allSalesTeamMembers.length);
+        console.log('  All Sales Team Members:', allSalesTeamMembers.map(u => ({ id: u.id, name: u.name, email: u.email, role: u.role, managed_by: u.managed_by })));
+        const accessibleIds = [userId, ...allSalesTeamMembers.map(u => u.id)];
+        const allLeadsRaw = await db.getLeads();
+        allLeads = allLeadsRaw.filter(l => !l.assigned_staff_id || accessibleIds.includes(l.assigned_staff_id));
+        // CRITICAL: Always include team head + ALL sales team members
+        allUsers = [req.user, ...allSalesTeamMembers];
+        console.log('  All Users (including team head):', allUsers.length);
+        console.log('  All Users List:', allUsers.map(u => ({ id: u.id, name: u.name, email: u.email, role: u.role })));
+      }
+      
+      const allAttendance = await db.getAttendance();
+      // Get all clients for metrics - filter for sales team head
+      let allClients = await db.getClients();
+      if (role === 'SALES_TEAM_HEAD') {
+        // Sales team head sees clients assigned to themselves and ALL sales team members
+        const allSalesTeamMembers = await db.getUsers({ role: 'SALES_TEAM' });
+        const accessibleIds = [userId, ...allSalesTeamMembers.map(u => u.id)];
+        allClients = allClients.filter(c => 
+          !c.assigned_staff_id || accessibleIds.includes(c.assigned_staff_id)
+        );
+      }
+
+      // Log for debugging
+      console.log('📊 Dashboard metrics calculation:');
+      console.log('  Total leads:', allLeads.length);
+      console.log('  Total clients:', allClients.length);
+      console.log('  Registration Completed (from leads):', allLeads.filter(l => l.status === 'Registration Completed').length);
+      console.log('  Registration Completed (from clients):', allClients.length);
+      console.log('  All status counts from leads:');
+      const statusCounts = {
+        'New': allLeads.filter(l => l.status === 'New').length,
+        'Follow-up': allLeads.filter(l => l.status === 'Follow-up').length,
+        'Prospect': allLeads.filter(l => l.status === 'Prospect').length,
+        'Pending Lead': allLeads.filter(l => l.status === 'Pending Lead').length,
+        'Not Eligible': allLeads.filter(l => l.status === 'Not Eligible').length,
+        'Not Interested': allLeads.filter(l => l.status === 'Not Interested').length,
+        'Registration Completed': allLeads.filter(l => l.status === 'Registration Completed').length,
+      };
+      console.log('  ', JSON.stringify(statusCounts, null, 2));
+      console.log('  All client status counts:');
+      const clientStatusCounts = {
+        'Total Clients': allClients.length,
+        'With Sneha': allClients.filter(c => c.assigned_staff_id === 12).length,
+        'With Kripa': allClients.filter(c => c.processing_staff_id === 8).length,
+        'Payment Pending': allClients.filter(c => c.fee_status === 'Payment Pending').length,
+        '1st Installment Completed': allClients.filter(c => c.fee_status === '1st Installment Completed').length,
+        'PTE Fee Paid': allClients.filter(c => c.fee_status === 'PTE Fee Paid').length,
+      };
+      console.log('  ', JSON.stringify(clientStatusCounts, null, 2));
+      if (allLeads.length > 0) {
+        console.log('  Sample lead statuses:', allLeads.slice(0, 5).map(l => ({ id: l.id, name: l.name, status: l.status })));
+      }
+      if (allClients.length > 0) {
+        console.log('  Sample client fee statuses:', allClients.slice(0, 5).map(c => ({ id: c.id, name: c.name, fee_status: c.fee_status })));
+      }
 
       const metrics = {
         totalLeads: allLeads.length,
+        totalClients: allClients.length, // Add total clients count
         leadsByStatus: {
           'New': allLeads.filter(l => l.status === 'New').length,
           'Follow-up': allLeads.filter(l => l.status === 'Follow-up').length,
-          'Under Processing': allLeads.filter(l => l.status === 'Under Processing').length,
-          'Converted': allLeads.filter(l => l.status === 'Converted').length,
-          'Closed / Rejected': allLeads.filter(l => l.status === 'Closed / Rejected').length,
+          'Prospect': allLeads.filter(l => l.status === 'Prospect').length,
+          'Pending Lead': allLeads.filter(l => l.status === 'Pending Lead').length,
+          'Not Eligible': allLeads.filter(l => l.status === 'Not Eligible').length,
+          'Not Interested': allLeads.filter(l => l.status === 'Not Interested').length,
+          'Registration Completed': allLeads.filter(l => l.status === 'Registration Completed').length, // Count from actual leads
+        },
+        clientsByStatus: {
+          'Total Clients': allClients.length,
+          'With Sneha': allClients.filter(c => c.assigned_staff_id === 12).length, // Sneha's ID is 12
+          'With Kripa': allClients.filter(c => c.processing_staff_id === 8).length, // Kripa's ID is 8
+          'Payment Pending': allClients.filter(c => c.fee_status === 'Payment Pending').length,
+          '1st Installment Completed': allClients.filter(c => c.fee_status === '1st Installment Completed').length,
+          'PTE Fee Paid': allClients.filter(c => c.fee_status === 'PTE Fee Paid').length,
         },
       };
 
-      // Staff performance - show all non-admin users
-      const staffUsers = allUsers.filter(u => u.role !== 'ADMIN');
-      const staffPerformance = staffUsers.map(staff => {
+      // Staff performance - show all non-admin users (or team members for sales team head)
+      // Exception: Include Sneha and Kripa even if they're ADMIN (they're in processing team)
+      let staffUsers = [];
+      let staffPerformance = []; // Initialize to empty array to ensure it's always defined
+      if (role === 'ADMIN') {
+        staffUsers = allUsers.filter(u => {
+          // Include if not ADMIN, OR if it's Sneha or Kripa (processing team members)
+          const isSneha = u.name === 'Sneha' || u.name === 'SNEHA' || u.email === 'sneha@toniosenora.com';
+          const isKripa = u.name === 'Kripa' || u.name === 'KRIPA' || u.email === 'kripa@toniosenora.com';
+          return u.role !== 'ADMIN' || isSneha || isKripa;
+        });
+        console.log('📊 Staff Performance - All users:', allUsers.length);
+        console.log('📊 Staff Performance - After filtering (including Sneha/Kripa if ADMIN):', staffUsers.length);
+        console.log('📊 Staff Performance - User names:', staffUsers.map(u => ({ id: u.id, name: u.name, email: u.email, role: u.role })));
+        // Check if Sneha is in the list
+        const snehaInList = staffUsers.find(u => 
+          u.name === 'Sneha' || u.name === 'SNEHA' || u.email === 'sneha@toniosenora.com'
+        );
+        console.log('📊 Sneha in staff list?', snehaInList ? `Yes - ID: ${snehaInList.id}, Role: ${snehaInList.role}` : 'No');
+      } else if (role === 'SALES_TEAM_HEAD') {
+        // Sales team head sees themselves and their team members
+        // CRITICAL: Use allUsers which already includes team head + team members
+        staffUsers = allUsers;
+        console.log('📊 Sales Team Head - Staff Users for Performance:');
+        console.log('  All Users Count:', allUsers.length);
+        console.log('  All Users:', allUsers.map(u => ({ id: u.id, name: u.name, email: u.email, role: u.role })));
+        console.log('  Staff Users Count:', staffUsers.length);
+        console.log('  Staff Users:', staffUsers.map(u => ({ id: u.id, name: u.name, email: u.email, role: u.role })));
+        
+        // Ensure at least the team head is included (safety check)
+        if (staffUsers.length === 0) {
+          console.error('❌ CRITICAL ERROR: No staff users found for sales team head!');
+          console.error('  This should never happen. Adding team head themselves as fallback.');
+          staffUsers = [req.user];
+        }
+      }
+      
+      // CRITICAL: Always create staffPerformance for ALL staffUsers, even if they have 0 leads/clients
+      staffPerformance = staffUsers.map(staff => {
         const staffLeads = allLeads.filter(l => l.assigned_staff_id === staff.id);
-        return {
+        const staffClients = allClients.filter(c => c.assigned_staff_id === staff.id);
+        const performance = {
           id: staff.id,
           name: staff.name,
+          email: staff.email, // Include email for processing team detection
           total_leads: staffLeads.length,
-          converted_leads: staffLeads.filter(l => l.status === 'Converted').length,
+          converted_leads: staffClients.length, // Show actual converted clients, not "Pending Lead" status
+          clients_in_processing: staffClients.filter(c => c.processing_staff_id !== null).length,
         };
-      }).sort((a, b) => b.total_leads - a.total_leads);
+        console.log(`  Staff Performance for ${staff.name}:`, {
+          total_leads: performance.total_leads,
+          converted_leads: performance.converted_leads,
+          clients_in_processing: performance.clients_in_processing
+        });
+        return performance;
+      }).sort((a, b) => {
+        // Sort by total_leads descending, but if equal, sort by name
+        if (b.total_leads !== a.total_leads) {
+          return b.total_leads - a.total_leads;
+        }
+        return a.name.localeCompare(b.name);
+      });
+      
+      // Log staff performance for sales team head
+      if (role === 'SALES_TEAM_HEAD') {
+        console.log('📊 Sales Team Head - Final Staff Performance:');
+        console.log('  Staff Performance Count:', staffPerformance.length);
+        console.log('  Staff Performance:', JSON.stringify(staffPerformance.map(s => ({ 
+          id: s.id, 
+          name: s.name, 
+          email: s.email,
+          total_leads: s.total_leads, 
+          converted_leads: s.converted_leads 
+        })), null, 2));
+        
+        // Additional check
+        if (staffPerformance.length === 0) {
+          console.error('❌ WARNING: Sales Team Head has empty staffPerformance array!');
+          console.error('  staffUsers length:', staffUsers.length);
+          console.error('  allUsers length:', allUsers.length);
+        }
+      }
 
       // Attendance overview (last 7 days)
       const sevenDaysAgo = new Date();
@@ -158,12 +529,92 @@ router.get('/', authenticate, async (req, res) => {
         }))
         .sort((a, b) => b.date.localeCompare(a.date));
 
-      res.json({
-        role: 'ADMIN',
+      // Recent leads (last 20, sorted by most recent)
+      const recentLeadsPromises = allLeads
+        .sort((a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at))
+        .slice(0, 20)
+        .map(async lead => ({
+          id: lead.id,
+          name: lead.name,
+          phone_number: lead.phone_number,
+          phone_country_code: lead.phone_country_code,
+          email: lead.email,
+          status: lead.status,
+          priority: lead.priority,
+          assigned_staff_id: lead.assigned_staff_id,
+          assigned_staff_name: lead.assigned_staff_id ? await db.getUserName(lead.assigned_staff_id) : null,
+          created_at: lead.created_at,
+          updated_at: lead.updated_at,
+        }));
+      const recentLeads = await Promise.all(recentLeadsPromises);
+
+      // Recent clients (last 20, sorted by most recent)
+      const recentClientsPromises = allClients
+        .sort((a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at))
+        .slice(0, 20)
+        .map(async client => ({
+          id: client.id,
+          name: client.name,
+          phone_number: client.phone_number,
+          phone_country_code: client.phone_country_code,
+          email: client.email,
+          status: 'Client',
+          fee_status: client.fee_status,
+          assigned_staff_id: client.assigned_staff_id,
+          assigned_staff_name: client.assigned_staff_id ? await db.getUserName(client.assigned_staff_id) : null,
+          processing_staff_id: client.processing_staff_id,
+          processing_staff_name: client.processing_staff_id ? await db.getUserName(client.processing_staff_id) : null,
+          created_at: client.created_at,
+          updated_at: client.updated_at,
+        }));
+      const recentClients = await Promise.all(recentClientsPromises);
+
+      // Set cache-control header to prevent caching
+      res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.set('Pragma', 'no-cache');
+      res.set('Expires', '0');
+
+      // Log response for debugging
+      console.log('📤 Sending dashboard response:');
+      console.log('  Role:', role);
+      console.log('  Registration Completed:', metrics.leadsByStatus['Registration Completed']);
+      console.log('  Total Clients:', metrics.totalClients);
+      console.log('  Staff Performance Count:', staffPerformance ? staffPerformance.length : 'NULL/UNDEFINED');
+      console.log('  Staff Performance Type:', typeof staffPerformance);
+      console.log('  Staff Performance Is Array:', Array.isArray(staffPerformance));
+      if (role === 'SALES_TEAM_HEAD') {
+        console.log('  Staff Performance Details:', JSON.stringify(staffPerformance, null, 2));
+        console.log('  Staff Performance First Item:', staffPerformance && staffPerformance.length > 0 ? staffPerformance[0] : 'NONE');
+      }
+      console.log('  All status counts:', JSON.stringify(metrics.leadsByStatus, null, 2));
+
+      // Final check before sending response
+      if (role === 'SALES_TEAM_HEAD') {
+        console.log('🔍 FINAL CHECK before sending response:');
+        console.log('  staffPerformance variable exists?', typeof staffPerformance !== 'undefined');
+        console.log('  staffPerformance value:', staffPerformance);
+        console.log('  staffPerformance type:', typeof staffPerformance);
+        console.log('  staffPerformance isArray:', Array.isArray(staffPerformance));
+        console.log('  staffPerformance length:', staffPerformance ? staffPerformance.length : 'N/A');
+      }
+
+      const responseData = {
+        role: role, // Use actual role (ADMIN or SALES_TEAM_HEAD)
         metrics,
-        staffPerformance,
+        staffPerformance: staffPerformance || [], // Ensure it's always an array
         attendanceOverview,
-      });
+        recentLeads,
+        recentClients, // Add recent clients to dashboard
+      };
+
+      // Final verification
+      if (role === 'SALES_TEAM_HEAD') {
+        console.log('🔍 Response data being sent:');
+        console.log('  responseData.staffPerformance exists?', typeof responseData.staffPerformance !== 'undefined');
+        console.log('  responseData.staffPerformance:', JSON.stringify(responseData.staffPerformance, null, 2));
+      }
+
+      res.json(responseData);
     }
   } catch (error) {
     console.error('Dashboard error:', error);

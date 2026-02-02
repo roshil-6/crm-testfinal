@@ -7,13 +7,9 @@ const { authenticate } = require('../middleware/auth');
 const router = express.Router();
 
 // Helper function to log login attempts
-function logLoginAttempt(email, success, reason, userId = null) {
+async function logLoginAttempt(email, success, reason, userId = null) {
   try {
-    const dbData = db.db;
-    if (!dbData.loginLogs) {
-      dbData.loginLogs = [];
-    }
-    dbData.loginLogs.push({
+    await db.createLoginLog({
       email,
       success,
       reason,
@@ -21,13 +17,6 @@ function logLoginAttempt(email, success, reason, userId = null) {
       timestamp: new Date().toISOString(),
       ip_address: null, // Can be added if needed
     });
-    
-    // Keep only last 1000 login logs
-    if (dbData.loginLogs.length > 1000) {
-      dbData.loginLogs = dbData.loginLogs.slice(-1000);
-    }
-    
-    db.save();
   } catch (error) {
     console.error('Error logging login attempt:', error);
   }
@@ -39,27 +28,27 @@ router.post('/login', async (req, res) => {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      logLoginAttempt(email || 'unknown', false, 'Missing email or password');
+      await logLoginAttempt(email || 'unknown', false, 'Missing email or password');
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
-    const users = db.getUsers({ email });
+    const users = await db.getUsers({ email });
     const user = users[0];
 
     if (!user) {
-      logLoginAttempt(email, false, 'User not found');
+      await logLoginAttempt(email, false, 'User not found');
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     const isValidPassword = await bcrypt.compare(password, user.password);
 
     if (!isValidPassword) {
-      logLoginAttempt(email, false, 'Invalid password', user.id);
+      await logLoginAttempt(email, false, 'Invalid password', user.id);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     // Successful login
-    logLoginAttempt(email, true, 'Login successful', user.id);
+    await logLoginAttempt(email, true, 'Login successful', user.id);
 
     const token = jwt.sign(
       { userId: user.id, role: user.role },
@@ -78,7 +67,7 @@ router.post('/login', async (req, res) => {
     });
   } catch (error) {
     console.error('Login error:', error);
-    logLoginAttempt(req.body.email || 'unknown', false, 'Server error');
+    await logLoginAttempt(req.body.email || 'unknown', false, 'Server error');
     res.status(500).json({ error: 'Server error' });
   }
 });

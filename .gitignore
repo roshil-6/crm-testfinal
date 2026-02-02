@@ -2,15 +2,34 @@
 node_modules/
 */node_modules/
 
-# Environment variables
+# Environment variables - CRITICAL: Never commit these!
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+server/.env
+client/.env
+*.env
+!*.env.example
 
 # Database files (keep structure but ignore data)
 server/data/crm.json
+server/data/crm.db
+server/data/crm.db-shm
+server/data/crm.db-wal
+server/data/backups/
+server/data/*.db
+server/data/*.json.backup
+
+# Credentials and secrets
+**/credentials.txt
+**/secrets.json
+**/*credentials*
+**/*secret*
+DEMO_CREDENTIALS.txt
+USER_CREDENTIALS.md
+LOGIN_CREDENTIALS_FIXED.md
 
 # Logs
 npm-debug.log*

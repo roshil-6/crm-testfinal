@@ -1,109 +1,112 @@
-const db = require('../config/database');
 const bcrypt = require('bcryptjs');
+const { Pool } = require('pg');
+require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
+});
 
 async function createAllUsers() {
   try {
-    console.log('Creating all users for Tonio & Senora CRM...\n');
-
-    // First, create sales team heads (we need their IDs for team assignment)
-    const salesTeamHeads = [
-      { name: 'Varsha', email: 'varsha@toniosenora.com', password: 'varshasenora876', role: 'SALES_TEAM_HEAD', team: 'sales' },
-      { name: 'Kiran', email: 'kiran@toniosenora.com', password: 'kiransenora098', role: 'SALES_TEAM_HEAD', team: 'sales' },
-    ];
-
-    const users = [
-      // Sales Team - assigned to Varsha (first 3) and Kiran (last 2)
-      // Note: managed_by will be set after heads are created
-      { name: 'Emy', email: 'emy@toniosenora.com', password: 'emysenora321', role: 'SALES_TEAM', team: 'sales', managed_by_email: 'varsha@toniosenora.com' },
-      { name: 'Shilpa', email: 'shilpa@toniosenora.com', password: 'shilpasenora432', role: 'SALES_TEAM', team: 'sales', managed_by_email: 'varsha@toniosenora.com' },
-      { name: 'Asna', email: 'asna@toniosenora.com', password: 'asnasenora543', role: 'SALES_TEAM', team: 'sales', managed_by_email: 'varsha@toniosenora.com' },
-      { name: 'Karthika', email: 'karthika@toniosenora.com', password: 'karthikasenora654', role: 'SALES_TEAM', team: 'sales', managed_by_email: 'kiran@toniosenora.com' },
-      { name: 'Jibina', email: 'jibina@toniosenora.com', password: 'jibinasenora765', role: 'SALES_TEAM', team: 'sales', managed_by_email: 'kiran@toniosenora.com' },
-      
-      // Processing
-      { name: 'Kripa', email: 'kripa@toniosenora.com', password: 'kripasenora325', role: 'PROCESSING', team: 'processing' },
-      
-      // Admins (Full Access) - These also act as Sales Team Admin
-      { name: 'ROJISHA', email: 'rojishahead@toniosenora.com', password: 'rojishasenoramain000', role: 'ADMIN', team: 'admin' },
-      { name: 'SREELAKSHMI', email: 'sreelakshmi@toniosenora.com', password: 'sreelakshmisenora000', role: 'ADMIN', team: 'admin' },
-      { name: 'SHEELA', email: 'sheela@toniosenora.com', password: 'sheelasenorasub000', role: 'ADMIN', team: 'admin' },
-      { name: 'SNEHA', email: 'sneha@toniosenora.com', password: 'snehasenora010', role: 'ADMIN', team: 'admin' },
-    ];
-
-    // Create sales team heads first
-    const headIdMap = {}; // email -> id mapping
-    for (const headData of salesTeamHeads) {
-      const existingUsers = db.getUsers({ email: headData.email });
-      if (existingUsers.length > 0) {
-        console.log(`⏭️  Skipped: ${headData.name} (${headData.email}) - already exists`);
-        headIdMap[headData.email] = existingUsers[0].id;
-        continue;
-      }
-
-      const hashedPassword = await bcrypt.hash(headData.password, 10);
-      const newUser = db.createUser({
-        name: headData.name,
-        email: headData.email,
-        password: hashedPassword,
-        role: headData.role,
-        team: headData.team,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      });
-
-      headIdMap[headData.email] = newUser.id;
-      console.log(`✅ Created: ${newUser.name} (${newUser.email}) - Role: ${newUser.role}`);
-    }
-
-    let created = 0;
-    let skipped = 0;
-
-    // Now create all other users
-    for (const userData of users) {
-      // Check if user already exists
-      const existingUsers = db.getUsers({ email: userData.email });
-      if (existingUsers.length > 0) {
-        console.log(`⏭️  Skipped: ${userData.name} (${userData.email}) - already exists`);
-        skipped++;
-        continue;
-      }
-
-      // Hash password
-      const hashedPassword = await bcrypt.hash(userData.password, 10);
-
-      // Prepare user object
-      const userObj = {
-        name: userData.name,
-        email: userData.email,
-        password: hashedPassword,
-        role: userData.role,
-        team: userData.team,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-
-      // Add managed_by if specified
-      if (userData.managed_by_email && headIdMap[userData.managed_by_email]) {
-        userObj.managed_by = headIdMap[userData.managed_by_email];
-      }
-
-      // Create user
-      const newUser = db.createUser(userObj);
-
-      console.log(`✅ Created: ${newUser.name} (${newUser.email}) - Role: ${newUser.role}${newUser.managed_by ? ` (Managed by: ${userData.managed_by_email})` : ''}`);
-      created++;
-    }
-
-    console.log(`\n📊 Summary:`);
-    console.log(`   Created: ${created} users`);
-    console.log(`   Skipped: ${skipped} users (already exist)`);
-    console.log(`\n✅ User creation completed!`);
+    console.log('👤 Creating all users...\n');
     
-    process.exit(0);
+    // Check existing users
+    const result = await pool.query('SELECT * FROM users');
+    const existingUsers = result.rows;
+    
+    if (existingUsers.length > 0) {
+      console.log(`⚠️  ${existingUsers.length} user(s) already exist.`);
+      console.log('   Updating/creating all users...\n');
+    }
+    
+    // Head Admin - ROJISHA (Full access)
+    const rojishaPassword = await bcrypt.hash('rojishasenoramain000', 10);
+    await upsertUser('ROJISHA', 'rojishahead@toniosenora.com', rojishaPassword, 'ADMIN');
+    
+    // Admins (Full dashboard access)
+    const sreelakshmiPassword = await bcrypt.hash('sreelakshmisenora000', 10);
+    await upsertUser('SREELAKSHMI', 'sreelakshmi@toniosenora.com', sreelakshmiPassword, 'ADMIN');
+    
+    const sheelaPassword = await bcrypt.hash('sheelasenorasub000', 10);
+    await upsertUser('SHEELA', 'sheela@toniosenora.com', sheelaPassword, 'ADMIN');
+    
+    const snehaPassword = await bcrypt.hash('snehasenora010', 10);
+    await upsertUser('SNEHA', 'sneha@toniosenora.com', snehaPassword, 'ADMIN');
+    
+    // Sales Team Heads
+    const varshaPassword = await bcrypt.hash('varshasenora876', 10);
+    await upsertUser('Varsha', 'varsha@toniosenora.com', varshaPassword, 'SALES_TEAM_HEAD');
+    
+    const kiranPassword = await bcrypt.hash('kiransenora098', 10);
+    await upsertUser('Kiran', 'kiran@toniosenora.com', kiranPassword, 'SALES_TEAM_HEAD');
+    
+    // Sales Team
+    const salesTeam = [
+      { name: 'Emy', email: 'emy@toniosenora.com', password: 'emysenora321' },
+      { name: 'Shilpa', email: 'shilpa@toniosenora.com', password: 'shilpasenora432' },
+      { name: 'Asna', email: 'asna@toniosenora.com', password: 'asnasenora543' },
+      { name: 'Karthika', email: 'karthika@toniosenora.com', password: 'karthikasenora654' },
+      { name: 'Jibina', email: 'jibina@toniosenora.com', password: 'jibinasenora765' },
+    ];
+    
+    for (const member of salesTeam) {
+      const hashedPassword = await bcrypt.hash(member.password, 10);
+      await upsertUser(member.name, member.email, hashedPassword, 'SALES_TEAM');
+    }
+    
+    // Processing
+    const kripaPassword = await bcrypt.hash('kripasenora325', 10);
+    await upsertUser('Kripa', 'kripa@toniosenora.com', kripaPassword, 'PROCESSING');
+    
+    console.log('\n✅ All users created/updated successfully!');
+    console.log('\n📋 Login Credentials Summary:');
+    console.log('\n🔴 HEAD ADMIN:');
+    console.log('   ROJISHA: rojishahead@toniosenora.com / rojishasenoramain000');
+    console.log('\n🟢 ADMINS (Full Dashboard Access):');
+    console.log('   SREELAKSHMI: sreelakshmi@toniosenora.com / sreelakshmisenora000');
+    console.log('   SHEELA: sheela@toniosenora.com / sheelasenorasub000');
+    console.log('   SNEHA: sneha@toniosenora.com / snehasenora010');
+    console.log('\n🟡 SALES TEAM HEADS:');
+    console.log('   Varsha: varsha@toniosenora.com / varshasenora876');
+    console.log('   Kiran: kiran@toniosenora.com / kiransenora098');
+    console.log('\n🔵 SALES TEAM:');
+    salesTeam.forEach(m => {
+      console.log(`   ${m.name}: ${m.email} / ${m.password}`);
+    });
+    console.log('\n🟣 PROCESSING:');
+    console.log('   Kripa: kripa@toniosenora.com / kripasenora325');
+    
+    await pool.end();
   } catch (error) {
-    console.error('❌ Error creating users:', error);
-    process.exit(1);
+    console.error('❌ Error:', error.message);
+    await pool.end();
+    throw error;
   }
 }
 
-createAllUsers();
+async function upsertUser(name, email, hashedPassword, role) {
+  // Check if user exists
+  const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+  
+  if (existing.rows.length > 0) {
+    // Update existing user
+    await pool.query(`
+      UPDATE users 
+      SET name = $1, password = $2, role = $3, updated_at = NOW()
+      WHERE email = $4
+    `, [name, hashedPassword, role, email]);
+    console.log(`✅ Updated: ${name} (${email}) - ${role}`);
+  } else {
+    // Create new user
+    await pool.query(`
+      INSERT INTO users (name, email, password, role, team, managed_by, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+    `, [name, email, hashedPassword, role, null, null]);
+    console.log(`✅ Created: ${name} (${email}) - ${role}`);
+  }
+}
+
+createAllUsers()
+  .then(() => process.exit(0))
+  .catch(() => process.exit(1));

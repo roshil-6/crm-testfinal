@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 import API_BASE_URL from '../config/api';
 import './Attendance.css';
-import { FiClock, FiCheckCircle, FiXCircle, FiCalendar, FiUser } from 'react-icons/fi';
+import { FiClock, FiCheckCircle, FiXCircle, FiCalendar, FiUser, FiAlertCircle } from 'react-icons/fi';
 
 const Attendance = () => {
   const { user } = useAuth();
@@ -16,12 +16,14 @@ const Attendance = () => {
     staffId: '',
   });
   const [staffList, setStaffList] = useState([]);
+  const [missingAttendance, setMissingAttendance] = useState(null);
 
   useEffect(() => {
     fetchTodayStatus();
     fetchHistory();
     if (user?.role === 'ADMIN' || user?.role === 'SALES_TEAM_HEAD') {
       fetchStaffList();
+      fetchMissingAttendance();
     }
   }, [user, filters]);
 
@@ -60,11 +62,23 @@ const Attendance = () => {
     }
   };
 
+  const fetchMissingAttendance = async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/api/attendance/missing`);
+      setMissingAttendance(response.data);
+    } catch (error) {
+      console.error('Error fetching missing attendance:', error);
+    }
+  };
+
   const handleCheckIn = async () => {
     try {
       await axios.post(`${API_BASE_URL}/api/attendance/checkin`);
       fetchTodayStatus();
       fetchHistory();
+      if (user?.role === 'ADMIN' || user?.role === 'SALES_TEAM_HEAD') {
+        fetchMissingAttendance();
+      }
     } catch (error) {
       alert(error.response?.data?.error || 'Error checking in');
     }
@@ -86,48 +100,120 @@ const Attendance = () => {
 
   return (
     <div className="attendance-page">
-      <h1 className="attendance-title">Attendance</h1>
+      <div className="attendance-header">
+        <h1 className="attendance-title">Attendance</h1>
+      </div>
+      
+      {/* Today's Check-in Section */}
       {(user?.role === 'STAFF' || user?.role === 'SALES_TEAM' || user?.role === 'SALES_TEAM_HEAD' || user?.role === 'PROCESSING') && (
-        <div className="attendance-actions">
-          <div className="today-status-card">
-            <div className="status-header">
-              <FiCalendar className="status-icon" />
-              <h2>Today's Attendance</h2>
-            </div>
-            {todayStatus && (
-              <div className="status-content">
-                {todayStatus.checkedIn ? (
-                  <>
-                    <div className="status-info">
-                      <span className="status-label">Check-in:</span>
-                      <span className="status-value">
-                        {new Date(todayStatus.checkIn).toLocaleTimeString()}
-                      </span>
-                    </div>
-                    {todayStatus.checkedOut ? (
+        <div className="attendance-section">
+          <div className="attendance-actions">
+            <div className="today-status-card">
+              <div className="status-header">
+                <FiCalendar className="status-icon" />
+                <h2>Today's Attendance</h2>
+              </div>
+              {todayStatus && (
+                <div className="status-content">
+                  {todayStatus.checkedIn ? (
+                    <>
                       <div className="status-info">
-                        <span className="status-label">Check-out:</span>
+                        <span className="status-label">Check-in:</span>
                         <span className="status-value">
-                          {new Date(todayStatus.checkOut).toLocaleTimeString()}
+                          {new Date(todayStatus.checkIn).toLocaleTimeString()}
                         </span>
                       </div>
-                    ) : (
-                      <button className="btn-checkout" onClick={handleCheckOut}>
-                        <FiXCircle /> Check Out
-                      </button>
-                    )}
-                  </>
-                ) : (
-                  <button className="btn-checkin" onClick={handleCheckIn}>
-                    <FiCheckCircle /> Check In
-                  </button>
-                )}
-              </div>
-            )}
+                      {todayStatus.checkedOut ? (
+                        <div className="status-info">
+                          <span className="status-label">Check-out:</span>
+                          <span className="status-value">
+                            {new Date(todayStatus.checkOut).toLocaleTimeString()}
+                          </span>
+                        </div>
+                      ) : (
+                        <button className="btn-checkout" onClick={handleCheckOut}>
+                          <FiXCircle /> Check Out
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <button className="btn-checkin" onClick={handleCheckIn}>
+                      <FiCheckCircle /> Check In
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
-      <div className="attendance-history">
+      
+      {/* Missing Attendance Section */}
+      {(user?.role === 'ADMIN' || user?.role === 'SALES_TEAM_HEAD') && missingAttendance && (
+        <div className="attendance-section">
+          <div className="missing-attendance-section">
+          <div className="missing-attendance-header">
+            <FiAlertCircle className="alert-icon" />
+            <h2>Missing Attendance - Today</h2>
+          </div>
+          <div className="missing-stats">
+            <div className="stat-item">
+              <span className="stat-label">Total Staff:</span>
+              <span className="stat-value">{missingAttendance.totalStaff}</span>
+            </div>
+            <div className="stat-item">
+              <span className="stat-label">Checked In:</span>
+              <span className="stat-value checked-in">{missingAttendance.checkedInCount}</span>
+            </div>
+            <div className="stat-item">
+              <span className="stat-label">Not Checked In:</span>
+              <span className="stat-value missing">{missingAttendance.missingCount}</span>
+            </div>
+          </div>
+          {missingAttendance.missingCount > 0 ? (
+            <div className="missing-staff-list">
+              <h3>Staff Who Didn't Check In:</h3>
+              <div className="missing-staff-table-container">
+                <table className="missing-staff-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Email</th>
+                      <th>Role</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {missingAttendance.missingStaff.map((staff) => (
+                      <tr key={staff.id}>
+                        <td>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <FiUser style={{ opacity: 0.6 }} />
+                            {staff.name}
+                          </div>
+                        </td>
+                        <td>{staff.email}</td>
+                        <td>
+                          <span className="role-badge">{staff.role}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <div className="all-checked-in">
+              <FiCheckCircle className="success-icon" />
+              <p>All staff members have checked in today!</p>
+            </div>
+          )}
+        </div>
+        </div>
+      )}
+      
+      {/* Attendance History */}
+      <div className="attendance-section">
+        <div className="attendance-history">
         <div className="history-header">
           <h2>Attendance History</h2>
           {(user?.role === 'ADMIN' || user?.role === 'SALES_TEAM_HEAD') && (
@@ -199,6 +285,7 @@ const Attendance = () => {
             </table>
           </div>
         )}
+        </div>
       </div>
     </div>
   );

@@ -5,26 +5,31 @@ require('dotenv').config();
 const authRoutes = require('./routes/auth');
 const dashboardRoutes = require('./routes/dashboard');
 const leadsRoutes = require('./routes/leads');
+const clientsRoutes = require('./routes/clients');
 const attendanceRoutes = require('./routes/attendance');
 const usersRoutes = require('./routes/users');
 const notificationsRoutes = require('./routes/notifications');
+const emailTemplatesRoutes = require('./routes/emailTemplates');
 const db = require('./config/database');
+const { startEmailScheduler } = require('./services/emailScheduler');
 
 const app = express();
-const PORT = process.env.PORT || 5001;
+const PORT = process.env.PORT || 5002;
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 
 // Test database connection
-try {
-  db.getUsers();
-  console.log('✅ JSON database connected successfully');
-  console.log(`📁 Database file: server/data/crm.json`);
-} catch (err) {
-  console.error('❌ Database connection error:', err.message);
-}
+(async () => {
+  try {
+    await db.getUsers();
+    console.log('✅ PostgreSQL database connected successfully');
+    console.log(`📡 Database: ${process.env.DATABASE_URL ? 'Connected' : 'DATABASE_URL not set'}`);
+  } catch (err) {
+    console.error('❌ Database connection error:', err.message);
+  }
+})();
 
 // Root route
 app.get('/', (req, res) => {
@@ -37,9 +42,11 @@ app.get('/', (req, res) => {
       auth: '/api/auth',
       dashboard: '/api/dashboard',
       leads: '/api/leads',
+      clients: '/api/clients',
       attendance: '/api/attendance',
       users: '/api/users',
-      notifications: '/api/notifications'
+      notifications: '/api/notifications',
+      emailTemplates: '/api/email-templates'
     },
     documentation: 'See README.md for API documentation'
   });
@@ -49,15 +56,17 @@ app.get('/', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/leads', leadsRoutes);
+app.use('/api/clients', clientsRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/notifications', notificationsRoutes);
+app.use('/api/email-templates', emailTemplatesRoutes);
 
 // Health check
 app.get('/api/health', async (req, res) => {
   try {
-    db.getUsers();
-    res.json({ status: 'ok', database: 'connected', type: 'JSON' });
+    await db.getUsers();
+    res.json({ status: 'ok', database: 'connected', type: 'PostgreSQL' });
   } catch (error) {
     res.status(503).json({ status: 'error', database: 'disconnected', error: error.message });
   }
@@ -72,4 +81,12 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📡 API available at http://localhost:${PORT}/api`);
+  
+  // Start email scheduler (wrap in try-catch to prevent server crash)
+  try {
+    startEmailScheduler();
+  } catch (error) {
+    console.error('⚠️  Warning: Email scheduler failed to start:', error.message);
+    console.log('   Server will continue without email scheduler');
+  }
 });

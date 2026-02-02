@@ -17,32 +17,55 @@ const LeadDetail = () => {
   const [formData, setFormData] = useState({});
   const [newComment, setNewComment] = useState('');
   const [staffList, setStaffList] = useState([]);
+  const [showRegistrationModal, setShowRegistrationModal] = useState(false);
+  const [registrationData, setRegistrationData] = useState({
+    assessment_authority: '',
+    occupation_mapped: '',
+    registration_fee_paid: '',
+  });
 
   useEffect(() => {
+    const canManageAssignment = user?.role === 'ADMIN'
+      || user?.role === 'SALES_TEAM_HEAD'
+      || user?.role === 'STAFF'
+      || user?.role === 'SALES_TEAM'
+      || user?.role === 'PROCESSING';
+
     if (id === 'new') {
       setEditing(true);
       setLead({});
       setFormData({
         name: '',
         phone_number: '',
+        phone_country_code: '+91',
         whatsapp_number: '',
+        whatsapp_country_code: '+91',
         email: '',
         age: '',
         occupation: '',
+        qualification: '',
+        year_of_experience: '',
+        country: '', // Keep for backward compatibility
+        target_country: '',
+        residing_country: '',
+        program: '',
         status: 'New',
         assigned_staff_id: user?.role === 'STAFF' ? user.id : null,
         priority: '',
         comment: '',
         follow_up_date: '',
+        follow_up_status: 'Pending',
+        source: '',
+        ielts_score: '',
       });
-      if (user?.role === 'ADMIN') {
+      if (canManageAssignment) {
         fetchStaffList();
       }
       setLoading(false);
     } else {
       fetchLead();
       fetchComments();
-      if (user?.role === 'ADMIN') {
+      if (canManageAssignment) {
         fetchStaffList();
       }
     }
@@ -82,11 +105,20 @@ const LeadDetail = () => {
 
   const handleSave = async () => {
     try {
+      // Clean up form data: convert empty strings to null for optional fields
+      const cleanedData = { ...formData };
+      const optionalFields = ['email', 'whatsapp_number', 'age', 'occupation', 'qualification', 'year_of_experience', 'country', 'target_country', 'residing_country', 'program', 'priority', 'comment', 'follow_up_date', 'follow_up_status', 'assigned_staff_id', 'source', 'ielts_score'];
+      optionalFields.forEach(field => {
+        if (cleanedData[field] === '') {
+          cleanedData[field] = null;
+        }
+      });
+      
       if (id === 'new') {
-        await axios.post(`${API_BASE_URL}/api/leads`, formData);
+        await axios.post(`${API_BASE_URL}/api/leads`, cleanedData);
         navigate('/leads');
       } else {
-        await axios.put(`${API_BASE_URL}/api/leads/${id}`, formData);
+        await axios.put(`${API_BASE_URL}/api/leads/${id}`, cleanedData);
         await fetchLead();
         setEditing(false);
       }
@@ -110,17 +142,77 @@ const LeadDetail = () => {
   };
 
   const handleChange = (e) => {
+    const { name, value } = e.target;
+    
+    // If status is being changed to "Registration Completed", show modal
+    if (name === 'status' && value === 'Registration Completed' && formData.status !== 'Registration Completed') {
+      setShowRegistrationModal(true);
+      return; // Don't update status yet, wait for modal submission
+    }
+    
     setFormData({
       ...formData,
-      [e.target.name]: e.target.value,
+      [name]: name === 'assigned_staff_id' ? (value === '' ? null : Number(value)) : value,
     });
+  };
+
+  const handleRegistrationSubmit = async () => {
+    // Validate required fields
+    if (!registrationData.assessment_authority || !registrationData.occupation_mapped || !registrationData.registration_fee_paid) {
+      alert('Please fill all required fields');
+      return;
+    }
+
+    try {
+      // First, update lead status to Registration Completed
+      await axios.put(`${API_BASE_URL}/api/leads/${id}`, {
+        status: 'Registration Completed',
+      });
+      
+      // Then create client from lead (this will remove the lead)
+      const clientPayload = {
+        ...formData,
+        lead_id: id,
+        assessment_authority: registrationData.assessment_authority,
+        occupation_mapped: registrationData.occupation_mapped,
+        registration_fee_paid: registrationData.registration_fee_paid,
+      };
+
+      const clientResponse = await axios.post(`${API_BASE_URL}/api/clients`, clientPayload);
+
+      console.log('✅ Client created:', clientResponse.data);
+      alert('Client created successfully! Lead has been converted to client.');
+      
+      // Navigate to clients page - it will auto-refresh
+      navigate('/clients');
+    } catch (error) {
+      console.error('Error creating client:', error);
+      console.error('Error details:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        url: error.config?.url,
+        method: error.config?.method,
+      });
+      const errorMessage = error.response?.data?.error || 
+                          error.response?.data?.message ||
+                          (error.response?.status === 404 ? 'Client route not found. Please restart the server.' : 'Error creating client. Please try again.');
+      alert(errorMessage);
+    }
   };
 
   const handleHeaderFieldChange = async (e) => {
     const { name, value } = e.target;
+    
+    // Normalize assigned_staff_id value
+    let normalizedValue = value;
+    if (name === 'assigned_staff_id') {
+      normalizedValue = value === '' || value === null ? null : Number(value);
+    }
+    
     const updatedData = {
       ...formData,
-      [name]: value,
+      [name]: normalizedValue,
     };
     
     setFormData(updatedData);
@@ -129,10 +221,16 @@ const LeadDetail = () => {
     if (id !== 'new' && lead) {
       try {
         await axios.put(`${API_BASE_URL}/api/leads/${id}`, {
-          [name]: value,
+          [name]: normalizedValue,
         });
         // Update lead state to reflect changes
-        setLead({ ...lead, [name]: value });
+        const updatedLead = { ...lead, [name]: normalizedValue };
+        setLead(updatedLead);
+        
+        // If assignment changed, refresh to get updated data
+        if (name === 'assigned_staff_id') {
+          await fetchLead();
+        }
       } catch (error) {
         console.error('Error auto-saving field:', error);
         alert('Error saving field. Please try again.');
@@ -148,7 +246,29 @@ const LeadDetail = () => {
 
   const canEdit = editing || id === 'new';
   const isNew = id === 'new';
-  const canEditHeaderFields = !isNew && (user?.role === 'ADMIN' || (user?.role === 'STAFF' && lead?.assigned_staff_id === user.id));
+  const canEditHeaderFields = !isNew && (
+    user?.role === 'ADMIN'
+    || (user?.role === 'STAFF' && Number(lead?.assigned_staff_id) === Number(user?.id))
+  );
+  const canEditNextFollowUp = !isNew && (
+    user?.role === 'ADMIN'
+    || user?.role === 'SALES_TEAM_HEAD'
+    || user?.role === 'SALES_TEAM'
+    || user?.role === 'PROCESSING'
+    || (user?.role === 'STAFF' && Number(lead?.assigned_staff_id) === Number(user?.id))
+  );
+  const canEditFollowUpStatus = !isNew && (
+    user?.role === 'ADMIN'
+    || user?.role === 'SALES_TEAM_HEAD'
+    || user?.role === 'SALES_TEAM'
+    || user?.role === 'PROCESSING'
+    || (user?.role === 'STAFF' && Number(lead?.assigned_staff_id) === Number(user?.id))
+  );
+  const canManageAssignment = user?.role === 'ADMIN'
+    || user?.role === 'SALES_TEAM_HEAD'
+    || user?.role === 'STAFF'
+    || user?.role === 'SALES_TEAM'
+    || user?.role === 'PROCESSING';
 
   return (
     <div className="lead-detail">
@@ -163,7 +283,7 @@ const LeadDetail = () => {
           <button
             className="btn-edit"
             onClick={() => setEditing(!editing)}
-            disabled={user?.role === 'STAFF' && lead?.assigned_staff_id !== user.id}
+            disabled={user?.role === 'STAFF' && Number(lead?.assigned_staff_id) !== Number(user?.id)}
           >
             {editing ? 'Cancel' : 'Edit'}
           </button>
@@ -247,9 +367,127 @@ const LeadDetail = () => {
             />
           )}
         </div>
+        {!isNew && formData.follow_up_date && (
+          <div className="header-field-group">
+            <label>Follow-up Status</label>
+            <select
+              name="follow_up_status"
+              value={formData.follow_up_status || 'Pending'}
+              onChange={handleHeaderFieldChange}
+              disabled={!canEditFollowUpStatus}
+              className="header-field-input"
+              style={{ 
+                background: formData.follow_up_status === 'Completed' ? '#d4edda' : 
+                           formData.follow_up_status === 'Skipped' ? '#f8d7da' : '#fff3cd'
+              }}
+            >
+              <option value="Pending">Pending</option>
+              <option value="Completed">Completed</option>
+              <option value="Skipped">Skipped</option>
+            </select>
+          </div>
+        )}
       </div>
       <div className="lead-detail-content">
         <div className="lead-detail-left">
+          {/* Quick Info Summary - Always visible */}
+          {!isNew && lead && (
+            <div className="detail-section" style={{ 
+              marginBottom: '20px', 
+              background: '#f9fafb', 
+              padding: '20px', 
+              borderRadius: '8px',
+              border: '1px solid #e5e7eb'
+            }}>
+              <h2 style={{ marginTop: 0, marginBottom: '15px' }}>Quick Summary</h2>
+              <div style={{ 
+                display: 'grid', 
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+                gap: '15px',
+                fontSize: '14px'
+              }}>
+                <div>
+                  <strong>Status:</strong> 
+                  <span style={{ 
+                    marginLeft: '8px',
+                    padding: '4px 12px',
+                    borderRadius: '12px',
+                    fontSize: '12px',
+                    fontWeight: 500,
+                    background: formData.status === 'New' ? '#dbeafe' : 
+                               formData.status === 'Follow-up' ? '#fef3c7' :
+                               formData.status === 'Prospect' ? '#d1fae5' :
+                               formData.status === 'Registration Completed' ? '#dcfce7' : '#f3f4f6',
+                    color: formData.status === 'New' ? '#1e40af' :
+                          formData.status === 'Follow-up' ? '#92400e' :
+                          formData.status === 'Prospect' ? '#065f46' :
+                          formData.status === 'Registration Completed' ? '#166534' : '#374151'
+                  }}>
+                    {formData.status || 'New'}
+                  </span>
+                </div>
+                <div>
+                  <strong>Priority:</strong> 
+                  <span style={{ marginLeft: '8px' }}>
+                    {formData.priority ? (
+                      <span style={{
+                        padding: '4px 12px',
+                        borderRadius: '12px',
+                        fontSize: '12px',
+                        fontWeight: 500,
+                        background: formData.priority === 'hot' ? '#fee2e2' :
+                                  formData.priority === 'warm' ? '#fef3c7' : '#e0e7ff',
+                        color: formData.priority === 'hot' ? '#991b1b' :
+                              formData.priority === 'warm' ? '#92400e' : '#3730a3'
+                      }}>
+                        {formData.priority.charAt(0).toUpperCase() + formData.priority.slice(1)}
+                      </span>
+                    ) : 'Not set'}
+                  </span>
+                </div>
+                <div>
+                  <strong>Assigned To:</strong> 
+                  <span style={{ marginLeft: '8px', color: formData.assigned_staff_name ? '#8B6914' : '#9ca3af' }}>
+                    {formData.assigned_staff_name || 'Unassigned'}
+                  </span>
+                </div>
+                {formData.follow_up_date && (
+                  <div>
+                    <strong>Follow-up Date:</strong> 
+                    <span style={{ marginLeft: '8px' }}>
+                      {new Date(formData.follow_up_date).toLocaleDateString()}
+                      {formData.follow_up_status && (
+                        <span style={{ 
+                          marginLeft: '8px',
+                          padding: '2px 8px',
+                          borderRadius: '8px',
+                          fontSize: '11px',
+                          background: formData.follow_up_status === 'Completed' ? '#d4edda' : 
+                                     formData.follow_up_status === 'Skipped' ? '#f8d7da' : '#fff3cd',
+                          color: formData.follow_up_status === 'Completed' ? '#155724' :
+                                formData.follow_up_status === 'Skipped' ? '#721c24' : '#856404'
+                        }}>
+                          {formData.follow_up_status}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                )}
+                {formData.source && (
+                  <div>
+                    <strong>Source:</strong> 
+                    <span style={{ marginLeft: '8px' }}>{formData.source}</span>
+                  </div>
+                )}
+                {formData.ielts_score && (
+                  <div>
+                    <strong>IELTS Score:</strong> 
+                    <span style={{ marginLeft: '8px' }}>{formData.ielts_score}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           <div className="detail-section">
             <h2>Lead Information</h2>
             <div className="form-grid">
@@ -270,26 +508,120 @@ const LeadDetail = () => {
                 <label>
                   <FiPhone /> Phone Number *
                 </label>
-                <input
-                  type="text"
-                  name="phone_number"
-                  value={formData.phone_number || ''}
-                  onChange={handleChange}
-                  disabled={!canEdit}
-                  required
-                />
+                <div className="phone-input-group">
+                  <select
+                    name="phone_country_code"
+                    value={formData.phone_country_code || '+91'}
+                    onChange={handleChange}
+                    disabled={!canEdit}
+                    className="country-code-select"
+                  >
+                    <option value="+1">+1 (US/CA)</option>
+                    <option value="+44">+44 (UK)</option>
+                    <option value="+61">+61 (AU)</option>
+                    <option value="+91">+91 (IN)</option>
+                    <option value="+971">+971 (AE)</option>
+                    <option value="+966">+966 (SA)</option>
+                    <option value="+65">+65 (SG)</option>
+                    <option value="+60">+60 (MY)</option>
+                    <option value="+62">+62 (ID)</option>
+                    <option value="+63">+63 (PH)</option>
+                    <option value="+66">+66 (TH)</option>
+                    <option value="+84">+84 (VN)</option>
+                    <option value="+86">+86 (CN)</option>
+                    <option value="+81">+81 (JP)</option>
+                    <option value="+82">+82 (KR)</option>
+                    <option value="+27">+27 (ZA)</option>
+                    <option value="+20">+20 (EG)</option>
+                    <option value="+234">+234 (NG)</option>
+                    <option value="+254">+254 (KE)</option>
+                    <option value="+33">+33 (FR)</option>
+                    <option value="+49">+49 (DE)</option>
+                    <option value="+39">+39 (IT)</option>
+                    <option value="+34">+34 (ES)</option>
+                    <option value="+31">+31 (NL)</option>
+                    <option value="+32">+32 (BE)</option>
+                    <option value="+41">+41 (CH)</option>
+                    <option value="+46">+46 (SE)</option>
+                    <option value="+47">+47 (NO)</option>
+                    <option value="+45">+45 (DK)</option>
+                    <option value="+358">+358 (FI)</option>
+                    <option value="+7">+7 (RU)</option>
+                    <option value="+55">+55 (BR)</option>
+                    <option value="+52">+52 (MX)</option>
+                    <option value="+54">+54 (AR)</option>
+                    <option value="+64">+64 (NZ)</option>
+                  </select>
+                  <input
+                    type="text"
+                    name="phone_number"
+                    value={formData.phone_number || ''}
+                    onChange={handleChange}
+                    disabled={!canEdit}
+                    required
+                    className="phone-number-input"
+                    placeholder="Enter phone number"
+                  />
+                </div>
               </div>
               <div className="form-group">
                 <label>
                   <FiPhone /> WhatsApp Number
                 </label>
-                <input
-                  type="text"
-                  name="whatsapp_number"
-                  value={formData.whatsapp_number || ''}
-                  onChange={handleChange}
-                  disabled={!canEdit}
-                />
+                <div className="phone-input-group">
+                  <select
+                    name="whatsapp_country_code"
+                    value={formData.whatsapp_country_code || '+91'}
+                    onChange={handleChange}
+                    disabled={!canEdit}
+                    className="country-code-select"
+                  >
+                    <option value="+1">+1 (US/CA)</option>
+                    <option value="+44">+44 (UK)</option>
+                    <option value="+61">+61 (AU)</option>
+                    <option value="+91">+91 (IN)</option>
+                    <option value="+971">+971 (AE)</option>
+                    <option value="+966">+966 (SA)</option>
+                    <option value="+65">+65 (SG)</option>
+                    <option value="+60">+60 (MY)</option>
+                    <option value="+62">+62 (ID)</option>
+                    <option value="+63">+63 (PH)</option>
+                    <option value="+66">+66 (TH)</option>
+                    <option value="+84">+84 (VN)</option>
+                    <option value="+86">+86 (CN)</option>
+                    <option value="+81">+81 (JP)</option>
+                    <option value="+82">+82 (KR)</option>
+                    <option value="+27">+27 (ZA)</option>
+                    <option value="+20">+20 (EG)</option>
+                    <option value="+234">+234 (NG)</option>
+                    <option value="+254">+254 (KE)</option>
+                    <option value="+33">+33 (FR)</option>
+                    <option value="+49">+49 (DE)</option>
+                    <option value="+39">+39 (IT)</option>
+                    <option value="+34">+34 (ES)</option>
+                    <option value="+31">+31 (NL)</option>
+                    <option value="+32">+32 (BE)</option>
+                    <option value="+41">+41 (CH)</option>
+                    <option value="+46">+46 (SE)</option>
+                    <option value="+47">+47 (NO)</option>
+                    <option value="+45">+45 (DK)</option>
+                    <option value="+358">+358 (FI)</option>
+                    <option value="+7">+7 (RU)</option>
+                    <option value="+55">+55 (BR)</option>
+                    <option value="+52">+52 (MX)</option>
+                    <option value="+54">+54 (AR)</option>
+                    <option value="+64">+64 (NZ)</option>
+                  </select>
+                  <input
+                    type="text"
+                    name="whatsapp_number"
+                    value={formData.whatsapp_number || ''}
+                    onChange={handleChange}
+                    disabled={!canEdit}
+                    className="phone-number-input"
+                    placeholder="Enter WhatsApp number"
+                  />
+                </div>
               </div>
               <div className="form-group">
                 <label>
@@ -324,6 +656,107 @@ const LeadDetail = () => {
                 />
               </div>
               <div className="form-group">
+                <label>Qualification</label>
+                <select
+                  name="qualification"
+                  value={formData.qualification || ''}
+                  onChange={handleChange}
+                  disabled={!canEdit}
+                >
+                  <option value="">Select Qualification</option>
+                  <option value="bachelors">Bachelors</option>
+                  <option value="diploma">Diploma</option>
+                  <option value="masters">Masters</option>
+                  <option value="phd">PhD</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Year of Experience</label>
+                <input
+                  type="number"
+                  name="year_of_experience"
+                  value={formData.year_of_experience || ''}
+                  onChange={handleChange}
+                  disabled={!canEdit}
+                  min="0"
+                />
+              </div>
+              <div className="form-group">
+                <label>Target Country</label>
+                <select
+                  name="target_country"
+                  value={formData.target_country || ''}
+                  onChange={handleChange}
+                  disabled={!canEdit}
+                >
+                  <option value="">Select Target Country</option>
+                  <option value="australia">Australia</option>
+                  <option value="canada">Canada</option>
+                  <option value="uk">United Kingdom</option>
+                  <option value="usa">United States</option>
+                  <option value="new zealand">New Zealand</option>
+                  <option value="others">Others</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Residing Country</label>
+                <select
+                  name="residing_country"
+                  value={formData.residing_country || ''}
+                  onChange={handleChange}
+                  disabled={!canEdit}
+                >
+                  <option value="">Select Residing Country</option>
+                  <option value="india">India</option>
+                  <option value="australia">Australia</option>
+                  <option value="canada">Canada</option>
+                  <option value="uk">United Kingdom</option>
+                  <option value="usa">United States</option>
+                  <option value="uae">United Arab Emirates</option>
+                  <option value="saudi arabia">Saudi Arabia</option>
+                  <option value="singapore">Singapore</option>
+                  <option value="malaysia">Malaysia</option>
+                  <option value="others">Others</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Program</label>
+                <select
+                  name="program"
+                  value={formData.program || ''}
+                  onChange={handleChange}
+                  disabled={!canEdit}
+                >
+                  <option value="">Select Program</option>
+                  <option value="gsm">GSM</option>
+                  <option value="fsw">FSW</option>
+                  <option value="visit">Visit</option>
+                  <option value="work">Work</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label>IELTS Score</label>
+                <input
+                  type="text"
+                  name="ielts_score"
+                  value={formData.ielts_score || ''}
+                  onChange={handleChange}
+                  disabled={!canEdit}
+                  placeholder="e.g., 7.5, 8.0"
+                />
+              </div>
+              <div className="form-group">
+                <label>Source</label>
+                <input
+                  type="text"
+                  name="source"
+                  value={formData.source || ''}
+                  onChange={handleChange}
+                  disabled={!canEdit}
+                  placeholder="e.g., Meta Ads, Website, Referral"
+                />
+              </div>
+              <div className="form-group">
                 <label>Status</label>
                 <select
                   name="status"
@@ -333,21 +766,25 @@ const LeadDetail = () => {
                 >
                   <option value="New">New</option>
                   <option value="Follow-up">Follow-up</option>
-                  <option value="Under Processing">Under Processing</option>
-                  <option value="Converted">Converted</option>
-                  <option value="Closed / Rejected">Closed / Rejected</option>
+                  <option value="Prospect">Prospect</option>
+                  <option value="Pending Lead">Pending Lead</option>
+                  <option value="Not Eligible">Not Eligible</option>
+                  <option value="Not Interested">Not Interested</option>
+                  <option value="Registration Completed">Registration Completed</option>
                 </select>
               </div>
-              {user?.role === 'ADMIN' && (
+              {canManageAssignment && (user?.role === 'ADMIN' || !isNew) && (
                 <div className="form-group">
-                  <label>Assign To</label>
+                  <label>{user?.role === 'ADMIN' ? 'Assign To' : 'Transfer To'}</label>
                   <select
                     name="assigned_staff_id"
                     value={formData.assigned_staff_id || ''}
-                    onChange={handleChange}
-                    disabled={!canEdit}
+                    onChange={user?.role === 'ADMIN' ? handleHeaderFieldChange : handleChange}
+                    disabled={user?.role === 'ADMIN' ? false : !canEdit}
                   >
-                    <option value="">Unassigned</option>
+                    {(user?.role === 'ADMIN' || user?.role === 'SALES_TEAM_HEAD') && (
+                      <option value="">Unassigned</option>
+                    )}
                     {staffList.map((staff) => (
                       <option key={staff.id} value={staff.id}>
                         {staff.name}
@@ -366,9 +803,32 @@ const LeadDetail = () => {
         </div>
         {!isNew && (
           <div className="lead-detail-right">
+            {/* Lead Comment Field - Display prominently */}
+            {formData.comment && (
+              <div className="comments-section" style={{ marginBottom: '20px' }}>
+                <h2>
+                  <FiMessageSquare /> Lead Comment
+                </h2>
+                <div style={{ 
+                  padding: '15px', 
+                  background: '#f9fafb', 
+                  borderRadius: '8px',
+                  border: '1px solid #e5e7eb',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  fontSize: '14px',
+                  lineHeight: '1.6',
+                  color: '#374151'
+                }}>
+                  {formData.comment}
+                </div>
+              </div>
+            )}
+
+            {/* Comments Section */}
             <div className="comments-section">
               <h2>
-                <FiMessageSquare /> Comments
+                <FiMessageSquare /> Activity Comments
               </h2>
               <div className="comment-input">
                 <textarea
@@ -402,6 +862,58 @@ const LeadDetail = () => {
           </div>
         )}
       </div>
+
+      {/* Registration Completed Modal */}
+      {showRegistrationModal && (
+        <div className="modal-overlay" onClick={() => setShowRegistrationModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h2>Registration Completed - Complete Client Information</h2>
+            <p style={{ marginBottom: '20px', color: '#666' }}>
+              Please provide the following mandatory information to convert this lead to a client:
+            </p>
+            <div className="form-group">
+              <label>Assessment Authority *</label>
+              <input
+                type="text"
+                value={registrationData.assessment_authority}
+                onChange={(e) => setRegistrationData({ ...registrationData, assessment_authority: e.target.value })}
+                placeholder="Enter assessment authority"
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label>Occupation Mapped *</label>
+              <input
+                type="text"
+                value={registrationData.occupation_mapped}
+                onChange={(e) => setRegistrationData({ ...registrationData, occupation_mapped: e.target.value })}
+                placeholder="Enter occupation mapped"
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label>Registration Fee Paid *</label>
+              <select
+                value={registrationData.registration_fee_paid}
+                onChange={(e) => setRegistrationData({ ...registrationData, registration_fee_paid: e.target.value })}
+                required
+              >
+                <option value="">Select</option>
+                <option value="Yes">Yes</option>
+                <option value="No">No</option>
+              </select>
+            </div>
+            <div className="modal-actions">
+              <button className="btn-cancel" onClick={() => setShowRegistrationModal(false)}>
+                Cancel
+              </button>
+              <button className="btn-save" onClick={handleRegistrationSubmit}>
+                Create Client
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

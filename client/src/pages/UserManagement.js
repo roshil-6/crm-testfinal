@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 import API_BASE_URL from '../config/api';
 import './UserManagement.css';
-import { FiUserPlus, FiEdit2, FiTrash2, FiSave, FiX, FiShield, FiUser } from 'react-icons/fi';
+import { FiUserPlus, FiEdit2, FiTrash2, FiSave, FiX, FiShield, FiUser, FiDownload } from 'react-icons/fi';
 
 const UserManagement = () => {
   const { user } = useAuth();
@@ -119,6 +119,28 @@ const UserManagement = () => {
     setError('');
   };
 
+  const handleExportToGoogleSheets = async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/api/users/export/csv`, {
+        responseType: 'blob'
+      });
+
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `users_export_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      alert('CSV file downloaded! You can import this file into Google Sheets by:\n1. Opening Google Sheets\n2. File > Import\n3. Upload the CSV file');
+    } catch (error) {
+      console.error('Export error:', error);
+      alert('Error exporting users. Please try again.');
+    }
+  };
+
   if (user?.role !== 'ADMIN') {
     return (
       <div className="user-management">
@@ -138,9 +160,18 @@ const UserManagement = () => {
     <div className="user-management">
       <div className="user-management-header">
         <h1>User Management</h1>
-        <button className="btn-add-user" onClick={() => setShowForm(true)}>
-          <FiUserPlus /> Add New User
-        </button>
+        <div className="header-actions">
+          <button
+            className="btn-export-users"
+            onClick={handleExportToGoogleSheets}
+            title="Export to CSV (can be imported to Google Sheets)"
+          >
+            <FiDownload /> Export to Google Sheets
+          </button>
+          <button className="btn-add-user" onClick={() => setShowForm(true)}>
+            <FiUserPlus /> Add New User
+          </button>
+        </div>
       </div>
 
       {showForm && (

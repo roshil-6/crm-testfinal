@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import GoldenLinesBackground from './GoldenLinesBackground';
 import Notifications from './Notifications';
 import './Layout.css';
-import { FiHome, FiUsers, FiClock, FiPlus, FiLogOut, FiSettings } from 'react-icons/fi';
+import { FiHome, FiUsers, FiClock, FiPlus, FiLogOut, FiSettings, FiUpload, FiMail } from 'react-icons/fi';
 
 const Layout = ({ children }) => {
   const { user, logout } = useAuth();
@@ -32,7 +32,11 @@ const Layout = ({ children }) => {
       <GoldenLinesBackground />
       <aside className="sidebar">
         <div className="sidebar-header">
-          <h2>Tonio & Senora</h2>
+          <img 
+            src="https://toniosenora.com/assets/img/logo.png" 
+            alt="Tonio & Senora" 
+            className="sidebar-logo"
+          />
           <p className="sidebar-subtitle">CRM System</p>
         </div>
         <nav className="sidebar-nav">
@@ -42,8 +46,22 @@ const Layout = ({ children }) => {
           </Link>
           <Link to="/leads" className={`nav-item ${isActive('/leads') ? 'active' : ''}`}>
             <FiUsers className="nav-icon" />
-            <span>Clients (Leads)</span>
+            <span>Leads</span>
           </Link>
+          <Link to="/clients" className={`nav-item ${isActive('/clients') ? 'active' : ''}`}>
+            <FiUsers className="nav-icon" />
+            <span>Clients</span>
+          </Link>
+          {(user?.role === 'ADMIN' || 
+            user?.role === 'SALES_TEAM_HEAD' || 
+            user?.role === 'SALES_TEAM' || 
+            user?.role === 'PROCESSING' || 
+            user?.role === 'STAFF') && (
+            <Link to="/leads/import" className={`nav-item ${isActive('/leads/import') ? 'active' : ''}`}>
+              <FiUpload className="nav-icon" />
+              <span>Import & Export</span>
+            </Link>
+          )}
           <Link to="/attendance" className={`nav-item ${isActive('/attendance') ? 'active' : ''}`}>
             <FiClock className="nav-icon" />
             <span>Attendance</span>
@@ -52,6 +70,12 @@ const Layout = ({ children }) => {
             <Link to="/users" className={`nav-item ${isActive('/users') ? 'active' : ''}`}>
               <FiSettings className="nav-icon" />
               <span>User Management</span>
+            </Link>
+          )}
+          {user?.role === 'ADMIN' && (
+            <Link to="/email-templates" className={`nav-item ${isActive('/email-templates') ? 'active' : ''}`}>
+              <FiMail className="nav-icon" />
+              <span>Email Templates</span>
             </Link>
           )}
         </nav>
