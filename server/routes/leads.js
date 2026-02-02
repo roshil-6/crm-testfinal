@@ -1808,12 +1808,8 @@ router.post('/:id/complete-registration', authenticate, async (req, res) => {
       fee_status: 'Payment Pending', // Initial status per requirements
     };
 
-    console.log('📝 Converting Lead to Client:', clientData);
-
     // Create Client
-    console.log('🔄 About to create client...');
     const newClient = await db.createClient(clientData);
-    console.log('✅ Client created successfully:', newClient.id);
 
     // Update Lead Status
     await db.updateLead(leadId, { status: 'Registration Completed' });
@@ -1853,10 +1849,8 @@ router.post('/:id/complete-registration', authenticate, async (req, res) => {
     res.status(201).json(newClient);
 
   } catch (error) {
-    console.error('❌ Complete registration error:', error.message);
-    console.error('   Stack:', error.stack);
-    console.error('   Full error object:', error);
-    res.status(500).json({ error: 'Server error', details: error.message, stack: error.stack });
+    console.error('❌ Complete registration error:', error);
+    res.status(500).json({ error: 'Server error', details: error.message });
   }
 });
 
