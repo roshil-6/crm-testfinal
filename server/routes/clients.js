@@ -122,35 +122,40 @@ router.get('/', authenticate, async (req, res) => {
     let clients = await db.getClients(filter);
     console.log(`📊 Found ${clients.length} clients with filter:`, JSON.stringify(filter, null, 2));
 
-    // Custom filtering for Kripa (if we intentionally skipped DB filtering for processing_staff_id)
-    // We check if processing_staff_id query param was present but NOT in the filter object
-    // And if it was Kripa asking for her own clients
-    if (processing_staff_id && !filter.processing_staff_id && Number(processing_staff_id) === userId) {
+    // Custom filtering for Processing Team (Kripa & Sneha)
+    if (Number(processing_staff_id) === userId || req.query.assigned_staff_id) {
       const userName = req.user.name || '';
       const userEmail = req.user.email || '';
-      const isKripa = userName === 'Kripa' || userName === 'KRIPA' || userEmail === 'kripa@toniosenora.com';
+      const isKripa = userName.toLowerCase() === 'kripa' || userEmail.toLowerCase() === 'kripa@toniosenora.com';
+      const isSneha = userName.toLowerCase() === 'sneha' || userEmail.toLowerCase() === 'sneha@toniosenora.com';
 
-      if (isKripa) {
-        const pStaffId = Number(processing_staff_id);
-        let snehaId = null;
-        try {
-          const snehaUsers = await db.getUsers({ email: 'sneha@toniosenora.com' });
-          if (snehaUsers.length > 0) snehaId = snehaUsers[0].id;
-          else {
-            const snehaByName = await db.getUsers({ name: 'Sneha' });
-            if (snehaByName.length > 0) snehaId = snehaByName[0].id;
-          }
-        } catch (e) { }
+      if (isKripa || isSneha) {
+        // Find Sneha's ID if we're Kripa, or use userId if we're Sneha
+        let snehaId = isSneha ? userId : null;
+        if (isKripa) {
+          try {
+            const snehaUsers = await db.getUsers({ email: 'sneha@toniosenora.com' });
+            if (snehaUsers.length > 0) snehaId = snehaUsers[0].id;
+            else {
+              const snehaByName = await db.getUsers({ name: 'Sneha' });
+              if (snehaByName.length > 0) snehaId = snehaByName[0].id;
+            }
+          } catch (e) { }
+        }
 
-        if (snehaId) {
-          // Filter in memory: Kripa's clients OR Sneha's clients
+        if (snehaId || isKripa) {
           const originalCount = clients.length;
-          clients = clients.filter(c =>
-            c.processing_staff_id === pStaffId ||
-            c.assigned_staff_id === snehaId ||
-            (c.processing_staff_id === null && c.assigned_staff_id === snehaId)
-          );
-          console.log(`✅ Kripa Filter: Filtered ${originalCount} clients down to ${clients.length} (Kripa's + Sneha's)`);
+          clients = clients.filter(c => {
+            if (isKripa) {
+              // Kripa sees: HER processing tasks OR Sneha's processing tasks OR Sneha's assigned clients
+              return c.processing_staff_id === userId ||
+                (snehaId && (c.processing_staff_id === snehaId || c.assigned_staff_id === snehaId));
+            } else {
+              // Sneha sees: HER processing tasks OR HER assigned clients
+              return c.processing_staff_id === userId || c.assigned_staff_id === userId;
+            }
+          });
+          console.log(`✅ ${isKripa ? 'Kripa' : 'Sneha'} Filter: Filtered ${originalCount} clients down to ${clients.length}`);
         }
       }
     }

@@ -404,7 +404,7 @@ router.get('/', authenticate, async (req, res) => {
         },
         clientsByStatus: {
           'Total Clients': restrictedClients.length,
-          'With Sneha': snehaUserId ? restrictedClients.filter(c => c.assigned_staff_id === snehaUserId).length : 0,
+          'With Sneha': snehaUserId ? restrictedClients.filter(c => c.processing_staff_id === snehaUserId || c.assigned_staff_id === snehaUserId).length : 0,
           'With Kripa': kripaUserId ? restrictedClients.filter(c => c.processing_staff_id === kripaUserId).length : 0,
           'Payment Pending': restrictedClients.filter(c => c.fee_status === 'Payment Pending').length,
           '1st Installment Completed': restrictedClients.filter(c => c.fee_status === '1st Installment Completed').length,
@@ -579,7 +579,7 @@ router.get('/', authenticate, async (req, res) => {
       console.log('  All client status counts:');
       const clientStatusCounts = {
         'Total Clients': allClients.length,
-        'With Sneha': snehaUserId ? allClients.filter(c => c.assigned_staff_id === snehaUserId).length : 0,
+        'With Sneha': snehaUserId ? allClients.filter(c => c.processing_staff_id === snehaUserId || c.assigned_staff_id === snehaUserId).length : 0,
         'With Kripa': kripaUserId ? allClients.filter(c => c.processing_staff_id === kripaUserId).length : 0,
         'Payment Pending': allClients.filter(c => c.fee_status === 'Payment Pending').length,
         '1st Installment Completed': allClients.filter(c => c.fee_status === '1st Installment Completed').length,
@@ -607,7 +607,7 @@ router.get('/', authenticate, async (req, res) => {
         },
         clientsByStatus: {
           'Total Clients': allClients.length,
-          'With Sneha': snehaUserId ? allClients.filter(c => c.assigned_staff_id === snehaUserId).length : 0,
+          'With Sneha': snehaUserId ? allClients.filter(c => c.processing_staff_id === snehaUserId || c.assigned_staff_id === snehaUserId).length : 0,
           'With Kripa': kripaUserId ? allClients.filter(c => c.processing_staff_id === kripaUserId).length : 0,
           'Payment Pending': allClients.filter(c => c.fee_status === 'Payment Pending').length,
           '1st Installment Completed': allClients.filter(c => c.fee_status === '1st Installment Completed').length,

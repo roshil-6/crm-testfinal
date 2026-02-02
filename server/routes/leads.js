@@ -1778,6 +1778,25 @@ router.post('/:id/complete-registration', authenticate, async (req, res) => {
       }
     }
 
+    // Find Sneha (Processing) for automatic assignment
+    let snehaUserId = null;
+    let snehaUser = null;
+    try {
+      const users = await db.getUsers({ email: 'sneha@toniosenora.com' });
+      if (users.length > 0) {
+        snehaUser = users[0];
+        snehaUserId = snehaUser.id;
+      } else {
+        const byName = await db.getUsers({ name: 'Sneha' });
+        if (byName.length > 0) {
+          snehaUser = byName[0];
+          snehaUserId = snehaUser.id;
+        }
+      }
+    } catch (e) {
+      console.error('Error finding Sneha for assignment:', e);
+    }
+
     // Prepare client data
     const clientData = {
       name: lead.name,
@@ -1794,7 +1813,8 @@ router.post('/:id/complete-registration', authenticate, async (req, res) => {
       target_country: lead.target_country || lead.country,
       residing_country: lead.residing_country,
       program: lead.program,
-      assigned_staff_id: lead.assigned_staff_id, // Keep original staff assignment
+      assigned_staff_id: lead.assigned_staff_id, // Original sales staff
+      processing_staff_id: snehaUserId, // Automatically assigned processing staff
       lead_id: leadId,
       created_by: userId,
 
@@ -1805,7 +1825,7 @@ router.post('/:id/complete-registration', authenticate, async (req, res) => {
 
       // Initialize processing status
       processing_status: 'New Registration',
-      fee_status: 'Payment Pending', // Initial status per requirements
+      fee_status: 'Payment Pending',
     };
 
     // Create Client
@@ -1814,22 +1834,8 @@ router.post('/:id/complete-registration', authenticate, async (req, res) => {
     // Update Lead Status
     await db.updateLead(leadId, { status: 'Registration Completed' });
 
-    // Assign to Sneha (Processing)
-    let snehaUser = null;
-    try {
-      const users = await db.getUsers({ email: 'sneha@toniosenora.com' });
-      if (users.length > 0) snehaUser = users[0];
-      else {
-        const byName = await db.getUsers({ name: 'Sneha' });
-        if (byName.length > 0) snehaUser = byName[0];
-      }
-    } catch (e) { console.error('Error finding Sneha:', e); }
-
+    // Send notification to Sneha if found
     if (snehaUser) {
-      // We set processing_staff_id to Sneha so it shows up in her dashboard
-      await db.updateClient(newClient.id, { processing_staff_id: snehaUser.id });
-
-      // Notify Sneha
       await db.createNotification({
         user_id: snehaUser.id,
         client_id: newClient.id,
@@ -1839,7 +1845,7 @@ router.post('/:id/complete-registration', authenticate, async (req, res) => {
       });
       console.log(`✅ Assigned new client ${newClient.id} to Sneha (${snehaUser.id})`);
     } else {
-      console.warn('⚠️ Sneha not found, client created but not assigned to processing staff');
+      console.warn('⚠️ Sneha not found, client created but no automatic processing assignment');
     }
 
     // Also notify Kripa? User said "duplicate to task box of sneha and kripa". 

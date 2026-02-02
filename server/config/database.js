@@ -65,8 +65,12 @@ const database = {
       params.push(filter.id);
     }
     if (filter.email) {
-      queryText += ` AND email = $${paramIndex++}`;
+      queryText += ` AND email ILIKE $${paramIndex++}`;
       params.push(filter.email);
+    }
+    if (filter.name) {
+      queryText += ` AND name ILIKE $${paramIndex++}`;
+      params.push(filter.name);
     }
     if (filter.role) {
       queryText += ` AND role = $${paramIndex++}`;
