@@ -2,6 +2,12 @@
 
 A comprehensive Customer Relationship Management system built with Node.js, Express, React, and PostgreSQL.
 
+## 🌐 Live Demo
+
+**Frontend:** [https://roshil-6.github.io/crm-testfinal/](https://roshil-6.github.io/crm-testfinal/)
+
+**Backend API:** Deploy to Railway (see setup below)
+
 ## 🚀 Quick Start
 
 ### Prerequisites
@@ -134,6 +140,21 @@ CRM/
 ### Dashboard
 - `GET /api/dashboard` - Get dashboard data (role-based)
 - `GET /api/dashboard/staff/:id` - Get staff performance data
+
+## 🚀 Deployment
+
+### GitHub Pages (Frontend)
+1. Go to repository Settings → Pages
+2. Source: GitHub Actions
+3. Add secret: `REACT_APP_API_URL` (your backend URL)
+4. Push to main branch (auto-deploys)
+
+### Railway (Backend)
+1. Go to: https://railway.app/project/prj_GQc4tWas2Lu4FHN56EUceFKFRR4a
+2. Add service from GitHub repo
+3. Root Directory: `server`
+4. Start Command: `node index.js`
+5. Add environment variables (see server/.env.example)
 
 ## 🔧 Configuration
 
