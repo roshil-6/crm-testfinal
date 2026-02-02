@@ -13,10 +13,53 @@ import EmailTemplates from './pages/EmailTemplates';
 import PrivateRoute from './components/PrivateRoute';
 import Layout from './components/Layout';
 
+// Determine basename for GitHub Pages deployment
+// In production (GitHub Pages), use the repository name as basename
+// In development (localhost), use empty string
+const getBasename = () => {
+  // Check the current URL path first
+  // This allows the app to work if accessed via /crm-testfinal in any environment
+  const pathname = window.location.pathname;
+  if (pathname.startsWith('/crm-testfinal')) {
+    return '/crm-testfinal';
+  }
+
+  // In development, if not using the repo path, default to root
+  if (process.env.NODE_ENV === 'development') {
+    return '';
+  }
+
+  // In production (GitHub Pages), fallback to other detections
+  // Fallback: use PUBLIC_URL or default
+  const publicUrl = process.env.PUBLIC_URL || '';
+  if (publicUrl) {
+    return publicUrl.startsWith('http') ? new URL(publicUrl).pathname : publicUrl;
+  }
+
+  // Default fallback
+  return '/crm-testfinal';
+};
+
 function App() {
+  const basename = getBasename();
+
+  // Log basename for debugging
+  console.log('🔍 Router Configuration:', {
+    basename,
+    NODE_ENV: process.env.NODE_ENV,
+    PUBLIC_URL: process.env.PUBLIC_URL,
+    windowLocation: window.location.pathname,
+  });
+
   return (
     <AuthProvider>
-      <Router>
+      <Router
+        basename={basename}
+        future={{
+          v7_startTransition: true,
+          v7_relativeSplatPath: true,
+        }}
+      >
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route

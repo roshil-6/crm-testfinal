@@ -10,7 +10,7 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   // SSL configuration - required for most cloud providers
   ssl: process.env.DATABASE_URL?.includes('localhost') || process.env.DATABASE_URL?.includes('127.0.0.1')
-    ? false 
+    ? false
     : { rejectUnauthorized: false }, // Allow self-signed certificates for cloud providers
   max: 20, // Maximum number of clients in the pool
   min: 2, // Minimum number of clients (keep connections alive)
@@ -41,7 +41,7 @@ async function query(text, params) {
     }
     return res;
   } catch (error) {
-    console.error('Query error:', { text, error: error.message });
+    console.error('Query error:', { text, params, error: error.message });
     throw error;
   }
 }
@@ -59,7 +59,7 @@ const database = {
     let queryText = 'SELECT * FROM users WHERE 1=1';
     const params = [];
     let paramIndex = 1;
-    
+
     if (filter.id) {
       queryText += ` AND id = $${paramIndex++}`;
       params.push(filter.id);
@@ -80,20 +80,20 @@ const database = {
       queryText += ` AND managed_by = $${paramIndex++}`;
       params.push(filter.managed_by);
     }
-    
+
     const result = await query(queryText, params);
     return result.rows;
   },
-  
+
   getTeamMembers: async (team) => {
     const result = await query('SELECT * FROM users WHERE team = $1', [team]);
     return result.rows;
   },
-  
+
   createUser: async (userData) => {
     const id = await getNextId('users_id_seq');
     const now = new Date().toISOString();
-    
+
     await query(`
       INSERT INTO users (id, name, email, password, role, team, managed_by, created_at, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -108,16 +108,16 @@ const database = {
       userData.created_at || now,
       userData.updated_at || now
     ]);
-    
+
     const users = await database.getUsers({ id });
     return users[0];
   },
-  
+
   updateUser: async (id, updates) => {
     const updatesList = [];
     const params = [];
     let paramIndex = 1;
-    
+
     if (updates.name !== undefined) {
       updatesList.push(`name = $${paramIndex++}`);
       params.push(updates.name);
@@ -142,27 +142,27 @@ const database = {
       updatesList.push(`managed_by = $${paramIndex++}`);
       params.push(updates.managed_by);
     }
-    
+
     updatesList.push(`updated_at = $${paramIndex++}`);
     params.push(new Date().toISOString());
     params.push(id);
-    
+
     await query(`UPDATE users SET ${updatesList.join(', ')} WHERE id = $${paramIndex}`, params);
     const users = await database.getUsers({ id });
     return users[0];
   },
-  
+
   deleteUser: async (id) => {
     const result = await query('DELETE FROM users WHERE id = $1', [id]);
     return result.rowCount > 0;
   },
-  
+
   // Leads
   getLeads: async (filter = {}) => {
     let queryText = 'SELECT * FROM leads WHERE 1=1';
     const params = [];
     let paramIndex = 1;
-    
+
     if (filter.id !== undefined) {
       queryText += ` AND id = $${paramIndex++}`;
       params.push(Number(filter.id));
@@ -181,17 +181,17 @@ const database = {
       params.push(searchTerm, searchTerm, searchTerm);
       paramIndex += 3;
     }
-    
+
     queryText += ' ORDER BY updated_at DESC, created_at DESC';
-    
+
     const result = await query(queryText, params);
     return result.rows;
   },
-  
+
   createLead: async (leadData) => {
     const id = await getNextId('leads_id_seq');
     const now = new Date().toISOString();
-    
+
     await query(`
       INSERT INTO leads (
         id, name, phone_number, phone_country_code, whatsapp_number, whatsapp_country_code,
@@ -225,49 +225,49 @@ const database = {
       leadData.created_at || now,
       leadData.updated_at || now
     ]);
-    
+
     const leads = await database.getLeads({ id });
     return leads[0];
   },
-  
+
   updateLead: async (id, updates) => {
     const updatesList = [];
     const params = [];
     let paramIndex = 1;
-    
+
     const allowedFields = [
       'name', 'phone_number', 'phone_country_code', 'whatsapp_number', 'whatsapp_country_code',
       'email', 'age', 'occupation', 'qualification', 'year_of_experience', 'country', 'program',
       'status', 'priority', 'comment', 'follow_up_date', 'follow_up_status',
       'assigned_staff_id', 'source', 'ielts_score'
     ];
-    
+
     for (const field of allowedFields) {
       if (updates[field] !== undefined) {
         updatesList.push(`${field} = $${paramIndex++}`);
         params.push(updates[field]);
       }
     }
-    
+
     if (updatesList.length === 0) {
       const leads = await database.getLeads({ id });
       return leads[0];
     }
-    
+
     updatesList.push(`updated_at = $${paramIndex++}`);
     params.push(new Date().toISOString());
     params.push(Number(id));
-    
+
     await query(`UPDATE leads SET ${updatesList.join(', ')} WHERE id = $${paramIndex}`, params);
     const leads = await database.getLeads({ id });
     return leads[0];
   },
-  
+
   deleteLead: async (id) => {
     const result = await query('DELETE FROM leads WHERE id = $1', [Number(id)]);
     return result.rowCount > 0;
   },
-  
+
   // Comments
   getComments: async (leadId) => {
     if (leadId === null || leadId === undefined) {
@@ -277,11 +277,11 @@ const database = {
     const result = await query('SELECT * FROM comments WHERE lead_id = $1 ORDER BY created_at ASC', [leadId]);
     return result.rows;
   },
-  
+
   createComment: async (commentData) => {
     const id = await getNextId('comments_id_seq');
     const now = new Date().toISOString();
-    
+
     await query(`
       INSERT INTO comments (id, lead_id, client_id, user_id, comment, created_at)
       VALUES ($1, $2, $3, $4, $5, $6)
@@ -293,17 +293,17 @@ const database = {
       commentData.comment,
       commentData.created_at || now
     ]);
-    
+
     const result = await query('SELECT * FROM comments WHERE id = $1', [id]);
     return result.rows[0];
   },
-  
+
   // Attendance
   getAttendance: async (filter = {}) => {
     let queryText = 'SELECT * FROM attendance WHERE 1=1';
     const params = [];
     let paramIndex = 1;
-    
+
     if (filter.user_id) {
       queryText += ` AND user_id = $${paramIndex++}`;
       params.push(filter.user_id);
@@ -320,17 +320,17 @@ const database = {
       queryText += ` AND date <= $${paramIndex++}`;
       params.push(filter.endDate);
     }
-    
+
     queryText += ' ORDER BY date DESC';
-    
+
     const result = await query(queryText, params);
     return result.rows;
   },
-  
+
   createAttendance: async (attendanceData) => {
     const id = await getNextId('attendance_id_seq');
     const now = new Date().toISOString();
-    
+
     await query(`
       INSERT INTO attendance (id, user_id, date, check_in, check_out, created_at)
       VALUES ($1, $2, $3, $4, $5, $6)
@@ -342,16 +342,16 @@ const database = {
       attendanceData.check_out || null,
       attendanceData.created_at || now
     ]);
-    
+
     const result = await query('SELECT * FROM attendance WHERE id = $1', [id]);
     return result.rows[0];
   },
-  
+
   updateAttendance: async (id, updates) => {
     const updatesList = [];
     const params = [];
     let paramIndex = 1;
-    
+
     if (updates.check_in !== undefined) {
       updatesList.push(`check_in = $${paramIndex++}`);
       params.push(updates.check_in);
@@ -364,30 +364,30 @@ const database = {
       updatesList.push(`date = $${paramIndex++}`);
       params.push(updates.date);
     }
-    
+
     if (updatesList.length === 0) {
       const result = await query('SELECT * FROM attendance WHERE id = $1', [id]);
       return result.rows[0];
     }
-    
+
     params.push(id);
     await query(`UPDATE attendance SET ${updatesList.join(', ')} WHERE id = $${paramIndex}`, params);
     const result = await query('SELECT * FROM attendance WHERE id = $1', [id]);
     return result.rows[0];
   },
-  
+
   // Helper to get user name
   getUserName: async (userId) => {
     const result = await query('SELECT name FROM users WHERE id = $1', [userId]);
     return result.rows[0]?.name || null;
   },
-  
+
   // Activity Logs
   getActivityLogs: async (filter = {}) => {
     let queryText = 'SELECT * FROM activity_logs WHERE 1=1';
     const params = [];
     let paramIndex = 1;
-    
+
     if (filter.user_id) {
       queryText += ` AND user_id = $${paramIndex++}`;
       params.push(filter.user_id);
@@ -396,13 +396,13 @@ const database = {
       queryText += ` AND type = $${paramIndex++}`;
       params.push(filter.type);
     }
-    
+
     queryText += ' ORDER BY timestamp DESC';
-    
+
     const result = await query(queryText, params);
     return result.rows;
   },
-  
+
   createActivityLog: async (logData) => {
     await query(`
       INSERT INTO activity_logs (type, user_id, target_user_id, details, timestamp)
@@ -415,13 +415,13 @@ const database = {
       logData.timestamp || new Date().toISOString()
     ]);
   },
-  
+
   // Login Logs
   getLoginLogs: async (filter = {}) => {
     let queryText = 'SELECT * FROM login_logs WHERE 1=1';
     const params = [];
     let paramIndex = 1;
-    
+
     if (filter.email) {
       queryText += ` AND email = $${paramIndex++}`;
       params.push(filter.email);
@@ -434,16 +434,16 @@ const database = {
       queryText += ` AND user_id = $${paramIndex++}`;
       params.push(filter.user_id);
     }
-    
+
     queryText += ' ORDER BY timestamp DESC';
-    
+
     const result = await query(queryText, params);
     return result.rows.map(row => ({
       ...row,
       success: row.success === true || row.success === 1
     }));
   },
-  
+
   createLoginLog: async (logData) => {
     await query(`
       INSERT INTO login_logs (email, success, reason, user_id, timestamp, ip_address)
@@ -457,13 +457,13 @@ const database = {
       logData.ip_address || null
     ]);
   },
-  
+
   // Notifications
   getNotifications: async (filter = {}) => {
     let queryText = 'SELECT * FROM notifications WHERE 1=1';
     const params = [];
     let paramIndex = 1;
-    
+
     if (filter.id !== undefined) {
       queryText += ` AND id = $${paramIndex++}`;
       params.push(Number(filter.id));
@@ -476,20 +476,20 @@ const database = {
       queryText += ` AND read = $${paramIndex++}`;
       params.push(filter.read);
     }
-    
+
     queryText += ' ORDER BY created_at DESC';
-    
+
     const result = await query(queryText, params);
     return result.rows.map(row => ({
       ...row,
       read: row.read === true || row.read === 1
     }));
   },
-  
+
   createNotification: async (notificationData) => {
     const id = await getNextId('notifications_id_seq');
     const now = new Date().toISOString();
-    
+
     await query(`
       INSERT INTO notifications (id, user_id, lead_id, client_id, type, message, read, created_by, created_at, read_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -505,11 +505,11 @@ const database = {
       notificationData.created_at || now,
       null
     ]);
-    
+
     const notifications = await database.getNotifications({ id });
     return notifications[0];
   },
-  
+
   markNotificationAsRead: async (id) => {
     await query('UPDATE notifications SET read = $1, read_at = $2 WHERE id = $3', [
       true,
@@ -519,7 +519,7 @@ const database = {
     const notifications = await database.getNotifications({ id });
     return notifications[0];
   },
-  
+
   markAllNotificationsAsRead: async (userId) => {
     await query('UPDATE notifications SET read = $1, read_at = $2 WHERE user_id = $3 AND read = $4', [
       true,
@@ -529,13 +529,13 @@ const database = {
     ]);
     return await database.getNotifications({ user_id: userId });
   },
-  
+
   // Email Templates
   getEmailTemplates: async (filter = {}) => {
     let queryText = 'SELECT * FROM email_templates WHERE 1=1';
     const params = [];
     let paramIndex = 1;
-    
+
     if (filter.id) {
       queryText += ` AND id = $${paramIndex++}`;
       params.push(filter.id);
@@ -548,18 +548,18 @@ const database = {
       queryText += ` AND active = $${paramIndex++}`;
       params.push(filter.active);
     }
-    
+
     const result = await query(queryText, params);
     return result.rows.map(row => ({
       ...row,
       active: row.active === true || row.active === 1
     }));
   },
-  
+
   createEmailTemplate: async (templateData) => {
     const id = await getNextId('email_templates_id_seq');
     const now = new Date().toISOString();
-    
+
     await query(`
       INSERT INTO email_templates (id, name, type, subject, body, active, created_at, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -573,16 +573,16 @@ const database = {
       templateData.created_at || now,
       templateData.updated_at || now
     ]);
-    
+
     const templates = await database.getEmailTemplates({ id });
     return templates[0];
   },
-  
+
   updateEmailTemplate: async (id, updates) => {
     const updatesList = [];
     const params = [];
     let paramIndex = 1;
-    
+
     if (updates.name !== undefined) {
       updatesList.push(`name = $${paramIndex++}`);
       params.push(updates.name);
@@ -603,27 +603,27 @@ const database = {
       updatesList.push(`active = $${paramIndex++}`);
       params.push(updates.active);
     }
-    
+
     updatesList.push(`updated_at = $${paramIndex++}`);
     params.push(new Date().toISOString());
     params.push(id);
-    
+
     await query(`UPDATE email_templates SET ${updatesList.join(', ')} WHERE id = $${paramIndex}`, params);
     const templates = await database.getEmailTemplates({ id });
     return templates[0];
   },
-  
+
   deleteEmailTemplate: async (id) => {
     const result = await query('DELETE FROM email_templates WHERE id = $1', [id]);
     return result.rowCount > 0;
   },
-  
+
   // Email Logs
   getEmailLogs: async (filter = {}) => {
     let queryText = 'SELECT * FROM email_logs WHERE 1=1';
     const params = [];
     let paramIndex = 1;
-    
+
     if (filter.lead_id) {
       queryText += ` AND lead_id = $${paramIndex++}`;
       params.push(filter.lead_id);
@@ -636,20 +636,20 @@ const database = {
       queryText += ` AND success = $${paramIndex++}`;
       params.push(filter.success);
     }
-    
+
     queryText += ' ORDER BY sent_at DESC';
-    
+
     const result = await query(queryText, params);
     return result.rows.map(row => ({
       ...row,
       success: row.success === true || row.success === 1
     }));
   },
-  
+
   createEmailLog: async (logData) => {
     const id = await getNextId('email_logs_id_seq');
     const now = new Date().toISOString();
-    
+
     await query(`
       INSERT INTO email_logs (id, lead_id, template_id, recipient_email, subject, success, error, sent_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -663,17 +663,17 @@ const database = {
       logData.error || null,
       logData.sent_at || now
     ]);
-    
+
     const result = await query('SELECT * FROM email_logs WHERE id = $1', [id]);
     return result.rows[0];
   },
-  
+
   // Clients
   getClients: async (filter = {}) => {
     let queryText = 'SELECT * FROM clients WHERE 1=1';
     const params = [];
     let paramIndex = 1;
-    
+
     if (filter.id !== undefined) {
       queryText += ` AND id = $${paramIndex++}`;
       params.push(Number(filter.id));
@@ -696,110 +696,136 @@ const database = {
       params.push(searchTerm, searchTerm, searchTerm);
       paramIndex += 3;
     }
-    
+
     queryText += ' ORDER BY updated_at DESC, created_at DESC';
-    
+
     const result = await query(queryText, params);
     return result.rows;
   },
-  
+
   createClient: async (clientData) => {
     const id = await getNextId('clients_id_seq');
     const now = new Date().toISOString();
-    
+
+    // Build dynamic INSERT query with only provided fields
+    const fields = [];
+    const values = [];
+    const params = [];
+    let paramIndex = 1;
+
+    // Required fields
+    fields.push('id', 'name', 'phone_number', 'created_at', 'updated_at');
+    values.push(`$${paramIndex++}`, `$${paramIndex++}`, `$${paramIndex++}`, `$${paramIndex++}`, `$${paramIndex++}`);
+    params.push(id, clientData.name, clientData.phone_number, now, now);
+
+    // Optional fields
+    const optionalFields = {
+      phone_country_code: clientData.phone_country_code || '+91',
+      whatsapp_number: clientData.whatsapp_number,
+      whatsapp_country_code: clientData.whatsapp_country_code || '+91',
+      email: clientData.email,
+      age: clientData.age,
+      occupation: clientData.occupation,
+      qualification: clientData.qualification,
+      year_of_experience: clientData.year_of_experience,
+      country: clientData.country,
+      target_country: clientData.target_country || clientData.country,
+      residing_country: clientData.residing_country,
+      program: clientData.program,
+      assessment_authority: clientData.assessment_authority,
+      occupation_mapped: clientData.occupation_mapped,
+      registration_fee_paid: clientData.registration_fee_paid === true || clientData.registration_fee_paid === 'Yes',
+      fee_status: clientData.fee_status,
+      amount_paid: clientData.amount_paid || 0,
+      payment_due_date: clientData.payment_due_date,
+      processing_status: clientData.processing_status,
+      processing_staff_id: clientData.processing_staff_id,
+      assigned_staff_id: clientData.assigned_staff_id,
+      lead_id: clientData.lead_id,
+      created_by: clientData.created_by,
+    };
+
+    for (const [field, value] of Object.entries(optionalFields)) {
+      if (value !== undefined && value !== null) {
+        fields.push(field);
+        values.push(`$${paramIndex++}`);
+        params.push(value);
+      }
+    }
+
     await query(`
-      INSERT INTO clients (
-        id, name, phone_number, phone_country_code, whatsapp_number, whatsapp_country_code,
-        email, age, occupation, qualification, year_of_experience, country, program,
-        fee_status, amount_paid, payment_due_date, processing_status,
-        processing_staff_id, assigned_staff_id, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
-    `, [
-      id,
-      clientData.name,
-      clientData.phone_number,
-      clientData.phone_country_code || '+91',
-      clientData.whatsapp_number || null,
-      clientData.whatsapp_country_code || '+91',
-      clientData.email || null,
-      clientData.age || null,
-      clientData.occupation || null,
-      clientData.qualification || null,
-      clientData.year_of_experience || null,
-      clientData.country || null,
-      clientData.program || null,
-      clientData.fee_status || null,
-      clientData.amount_paid || 0,
-      clientData.payment_due_date || null,
-      clientData.processing_status || null,
-      clientData.processing_staff_id || null,
-      clientData.assigned_staff_id || null,
-      clientData.created_at || now,
-      clientData.updated_at || now
-    ]);
-    
+      INSERT INTO clients (${fields.join(', ')})
+      VALUES (${values.join(', ')})
+    `, params);
+
     const clients = await database.getClients({ id });
     return clients[0];
   },
-  
+
   updateClient: async (id, updates) => {
     const updatesList = [];
     const params = [];
     let paramIndex = 1;
-    
+
     const allowedFields = [
       'name', 'phone_number', 'phone_country_code', 'whatsapp_number', 'whatsapp_country_code',
-      'email', 'age', 'occupation', 'qualification', 'year_of_experience', 'country', 'program',
+      'email', 'age', 'occupation', 'qualification', 'year_of_experience', 'country', 'target_country', 'residing_country', 'program',
+      'assessment_authority', 'occupation_mapped', 'registration_fee_paid',
       'fee_status', 'amount_paid', 'payment_due_date', 'processing_status',
-      'processing_staff_id', 'assigned_staff_id'
+      'processing_staff_id', 'assigned_staff_id', 'completed_actions', 'lead_id'
     ];
-    
+
     for (const field of allowedFields) {
       if (updates[field] !== undefined) {
         if (field === 'processing_staff_id' || field === 'assigned_staff_id') {
           updatesList.push(`${field} = $${paramIndex++}`);
           params.push(updates[field] !== null ? Number(updates[field]) : null);
+        } else if (field === 'completed_actions') {
+          // Handle array field - convert to PostgreSQL array format
+          updatesList.push(`${field} = $${paramIndex++}`);
+          const actionsArray = Array.isArray(updates[field]) ? updates[field] : [];
+          params.push(actionsArray);
         } else {
           updatesList.push(`${field} = $${paramIndex++}`);
           params.push(updates[field]);
         }
       }
     }
-    
+
     if (updatesList.length === 0) {
       const clients = await database.getClients({ id });
       return clients[0];
     }
-    
+
     updatesList.push(`updated_at = $${paramIndex++}`);
     params.push(new Date().toISOString());
     params.push(Number(id));
-    
+
     await query(`UPDATE clients SET ${updatesList.join(', ')} WHERE id = $${paramIndex}`, params);
     const clients = await database.getClients({ id });
     return clients[0];
   },
-  
+
   deleteClient: async (id) => {
     const result = await query('DELETE FROM clients WHERE id = $1', [Number(id)]);
     return result.rowCount > 0;
   },
-  
+
   // Expose pool for advanced queries
   pool,
-  
+
   // Expose query function for advanced usage
   query,
-  
+
   // Backward compatibility stubs (no-op for PostgreSQL)
   save: () => {
     // PostgreSQL auto-saves, no action needed
   },
-  
+
   loadDatabase: () => {
     // PostgreSQL is always loaded, no action needed
   },
-  
+
   getDatabase: () => pool,
 };
 

@@ -16,7 +16,7 @@ router.get('/debug/all', authenticate, async (req, res) => {
     if (req.user.role !== 'ADMIN') {
       return res.status(403).json({ error: 'Admin access required' });
     }
-    
+
     const allClients = await db.getClients({});
     const clientsInfo = allClients.map(c => ({
       id: c.id,
@@ -25,7 +25,7 @@ router.get('/debug/all', authenticate, async (req, res) => {
       processing_staff_id: c.processing_staff_id,
       processing_status: c.processing_status,
     }));
-    
+
     res.json({
       total: allClients.length,
       clients: clientsInfo,
@@ -44,22 +44,9 @@ router.get('/', authenticate, async (req, res) => {
     const { fee_status, search, processing_staff_id } = req.query;
 
     console.log('📥 GET /api/clients - Query params:', { fee_status, search, processing_staff_id, userId, role });
-    
-    // CRITICAL: Check database state
-    console.log('🔍 Database state check:');
-    console.log('  - db.clients exists:', !!db.db?.clients);
-    console.log('  - db.clients is array:', Array.isArray(db.db?.clients));
-    console.log('  - db.clients length:', db.db?.clients?.length || 0);
-    if (db.db?.clients && db.db.clients.length > 0) {
-      console.log('  - Sample client:', {
-        id: db.db.clients[0].id,
-        name: db.db.clients[0].name,
-        processing_staff_id: db.db.clients[0].processing_staff_id
-      });
-    }
 
     const filter = {};
-    
+
     // All staff can see all clients (but payment data is restricted)
     // No filtering by assigned_staff_id - everyone sees all clients
     // Exception: If processing_staff_id query param is provided, filter by that (for Kripa dashboard)
@@ -70,8 +57,44 @@ router.get('/', authenticate, async (req, res) => {
 
     // Filter by processing_staff_id if provided (for Kripa dashboard)
     if (processing_staff_id !== undefined && processing_staff_id !== null && processing_staff_id !== '') {
-      filter.processing_staff_id = Number(processing_staff_id);
-      console.log('🔍 Filtering clients by processing_staff_id:', filter.processing_staff_id, '(type:', typeof filter.processing_staff_id, ')');
+      const pStaffId = Number(processing_staff_id);
+
+      // Special logic for Kripa: She should see her own processing tasks AND Sneha's clients
+      const userName = req.user.name || '';
+      const userEmail = req.user.email || '';
+      const isKripa = userName === 'Kripa' || userName === 'KRIPA' || userEmail === 'kripa@toniosenora.com';
+
+      if (isKripa && pStaffId === userId) {
+        console.log('🔍 Kripa accessing clients - including Sneha\'s clients');
+
+        // Find Sneha's ID
+        let snehaId = null;
+        try {
+          const snehaUsers = await db.getUsers({ email: 'sneha@toniosenora.com' });
+          if (snehaUsers.length > 0) snehaId = snehaUsers[0].id;
+          else {
+            const snehaByName = await db.getUsers({ name: 'Sneha' });
+            if (snehaByName.length > 0) snehaId = snehaByName[0].id;
+          }
+        } catch (e) { console.error('Error finding Sneha:', e); }
+
+        if (snehaId) {
+          // We need a custom filter that db.getClients might not support directly via simple object
+          // So we will fetch all clients and filter in memory (SQLite is fast enough for this scale)
+          // OR we pass a special flag if db.getClients supported it. 
+          // Since db.getClients implementation is simplistic, we'll fetch broader and filter here.
+          // BUT db.getClients uses dynamic query building.
+          // Let's rely on fetching all and filtering here for Kripa specific case to be safe, 
+          // or we can't easily express OR condition with the current db helper.
+
+          // Fetch all clients (we will filter manually)
+          // We don't set filter.processing_staff_id here
+        } else {
+          filter.processing_staff_id = pStaffId;
+        }
+      } else {
+        filter.processing_staff_id = pStaffId;
+      }
     }
 
     // Filter by assigned_staff_id if provided (for Sneha dashboard)
@@ -95,77 +118,56 @@ router.get('/', authenticate, async (req, res) => {
         processing_staff_id_type: typeof allClientsRaw[0].processing_staff_id
       });
     }
-    
-    // CRITICAL: Check if getClients is working
-    const testClients = await db.getClients({});
-    console.log(`🔍 Test: getClients({}) returned ${testClients.length} clients`);
-    
+
     let clients = await db.getClients(filter);
     console.log(`📊 Found ${clients.length} clients with filter:`, JSON.stringify(filter, null, 2));
-    
-    // If no clients found but database has clients, there's a problem
-    // Try accessing the database directly
-    const directDb = require('../config/database');
-    const directClients = directDb.db?.clients || [];
-    
-    console.log(`🔍 Direct DB access: ${directClients.length} clients found`);
-    if (directClients.length > 0 && filter.processing_staff_id) {
-      console.log(`🔍 Filtering direct clients by processing_staff_id = ${filter.processing_staff_id}`);
-      directClients.forEach(c => {
-        console.log(`  - Client ${c.id}: processing_staff_id = ${c.processing_staff_id} (type: ${typeof c.processing_staff_id})`);
-      });
-    }
-    
-    if (clients.length === 0 && directClients.length > 0) {
-      console.log('⚠️ CRITICAL ISSUE: Database has clients but getClients returned 0!');
-      console.log(`⚠️ Direct access shows ${directClients.length} clients`);
-      console.log('⚠️ This suggests getClients is not working correctly.');
-      // Return clients directly as fallback
-      clients = [...directClients];
-      console.log(`⚠️ Using fallback: returning ${clients.length} clients directly from database`);
-      
-      // Apply filter manually if needed
-      if (filter.processing_staff_id !== undefined && filter.processing_staff_id !== null) {
-        const filterId = Number(filter.processing_staff_id);
-        console.log(`⚠️ Applying manual filter for processing_staff_id = ${filterId}`);
-        const beforeFilter = clients.length;
-        clients = clients.filter(c => {
-          const clientId = c.processing_staff_id !== null && c.processing_staff_id !== undefined 
-            ? Number(c.processing_staff_id) 
-            : null;
-          const matches = clientId === filterId;
-          if (matches) {
-            console.log(`  ✅ Client ${c.id} (${c.name}) matches filter`);
+
+    // Custom filtering for Kripa (if we intentionally skipped DB filtering for processing_staff_id)
+    // We check if processing_staff_id query param was present but NOT in the filter object
+    // And if it was Kripa asking for her own clients
+    if (processing_staff_id && !filter.processing_staff_id && Number(processing_staff_id) === userId) {
+      const userName = req.user.name || '';
+      const userEmail = req.user.email || '';
+      const isKripa = userName === 'Kripa' || userName === 'KRIPA' || userEmail === 'kripa@toniosenora.com';
+
+      if (isKripa) {
+        const pStaffId = Number(processing_staff_id);
+        let snehaId = null;
+        try {
+          const snehaUsers = await db.getUsers({ email: 'sneha@toniosenora.com' });
+          if (snehaUsers.length > 0) snehaId = snehaUsers[0].id;
+          else {
+            const snehaByName = await db.getUsers({ name: 'Sneha' });
+            if (snehaByName.length > 0) snehaId = snehaByName[0].id;
           }
-          return matches;
-        });
-        console.log(`⚠️ After manual filter: ${beforeFilter} -> ${clients.length} clients`);
+        } catch (e) { }
+
+        if (snehaId) {
+          // Filter in memory: Kripa's clients OR Sneha's clients
+          const originalCount = clients.length;
+          clients = clients.filter(c =>
+            c.processing_staff_id === pStaffId ||
+            c.assigned_staff_id === snehaId ||
+            (c.processing_staff_id === null && c.assigned_staff_id === snehaId)
+          );
+          console.log(`✅ Kripa Filter: Filtered ${originalCount} clients down to ${clients.length} (Kripa's + Sneha's)`);
+        }
       }
     }
-    
-    // Debug: Always show all clients and their processing_staff_id
-    const allClients = await db.getClients({});
-    console.log('🔍 DEBUG: All clients in database:');
-    if (allClients.length === 0) {
-      console.log('  ⚠️ NO CLIENTS IN DATABASE!');
-      // Check raw database
-      console.log('  🔍 Checking raw db.clients:', db.db?.clients?.length || 'undefined');
-    } else {
-      allClients.forEach(c => {
-        console.log(`  - Client ${c.id} (${c.name}): processing_staff_id = ${c.processing_staff_id} (type: ${typeof c.processing_staff_id}), assigned_staff_id = ${c.assigned_staff_id}`);
-      });
-    }
-    
+
+    // Debug: Log filter details if processing_staff_id is provided
     if (filter.processing_staff_id !== undefined && filter.processing_staff_id !== null) {
-      console.log(`🔍 Looking for processing_staff_id = ${filter.processing_staff_id} (type: ${typeof filter.processing_staff_id})`);
+      console.log(`🔍 Filtering by processing_staff_id = ${filter.processing_staff_id} (type: ${typeof filter.processing_staff_id})`);
     }
-    
-    // For non-admin roles, restrict payment data visibility - Only Admin, Sneha, and Kripa can see payment data
+
+    // For non-admin roles, restrict payment data visibility - Only Admin, Sneha, Kripa, and Emy (monitoring) can see payment data
     const userName = req.user.name || '';
     const userEmail = req.user.email || '';
-    const canViewPaymentData = role === 'ADMIN' || 
+    const isEmy = userName === 'Emy' || userName === 'EMY' || userEmail === 'emy@toniosenora.com';
+    const canViewPaymentData = role === 'ADMIN' ||
       userName === 'Sneha' || userName === 'SNEHA' || userEmail === 'sneha@toniosenora.com' ||
-      userName === 'Kripa' || userName === 'KRIPA' || userEmail === 'kripa@toniosenora.com';
+      userName === 'Kripa' || userName === 'KRIPA' || userEmail === 'kripa@toniosenora.com' ||
+      isEmy; // Emy has monitoring access
 
     // Filter payment data for unauthorized users (but show all other client data)
     if (!canViewPaymentData) {
@@ -184,7 +186,7 @@ router.get('/', authenticate, async (req, res) => {
         console.log(`  - Client ${c.id}: ${c.name}, processing_staff_id: ${c.processing_staff_id}`);
       });
     }
-    
+
     res.json(clients);
   } catch (error) {
     console.error('Get clients error:', error);
@@ -209,12 +211,14 @@ router.get('/:id', authenticate, async (req, res) => {
     // All staff can view all clients (access control removed for viewing)
     // Payment data visibility is controlled below
 
-    // Check payment data visibility - Only Admin, Sneha, and Kripa can see payment data
+    // Check payment data visibility - Only Admin, Sneha, Kripa, and Emy (monitoring) can see payment data
     const userName = req.user.name || '';
     const userEmail = req.user.email || '';
-    const canViewPaymentData = role === 'ADMIN' || 
+    const isEmy = userName === 'Emy' || userName === 'EMY' || userEmail === 'emy@toniosenora.com';
+    const canViewPaymentData = role === 'ADMIN' ||
       userName === 'Sneha' || userName === 'SNEHA' || userEmail === 'sneha@toniosenora.com' ||
-      userName === 'Kripa' || userName === 'KRIPA' || userEmail === 'kripa@toniosenora.com';
+      userName === 'Kripa' || userName === 'KRIPA' || userEmail === 'kripa@toniosenora.com' ||
+      isEmy; // Emy has monitoring access
 
     if (!canViewPaymentData) {
       // Remove payment fields and assigned_staff_id but keep all other client data
@@ -239,7 +243,7 @@ router.post('/', authenticate, [
   try {
     console.log('📥 POST /api/clients - Request received');
     console.log('Request body:', JSON.stringify(req.body, null, 2));
-    
+
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       console.log('❌ Validation errors:', errors.array());
@@ -306,7 +310,7 @@ router.post('/', authenticate, [
     console.log('📝 About to create client with data:', JSON.stringify(clientData, null, 2));
     const newClient = await db.createClient(clientData);
     console.log('✅ Client created:', newClient.id);
-    
+
     // Verify client exists in database
     const verifyClients = await db.getClients({ id: newClient.id });
     const verifyClient = verifyClients[0];
@@ -319,21 +323,26 @@ router.post('/', authenticate, [
       console.log('✅ Verification: Client found in database:', verifyClient.id, verifyClient.name);
     }
 
-    // If lead_id provided, remove the lead (it's been converted to client)
+    // If lead_id provided, update the lead status to "Registration Completed" (don't delete)
     // Note: Lead status should already be "Registration Completed" before this point
     if (lead_id) {
-      const leadIndex = db.db.leads.findIndex(l => Number(l.id) === Number(lead_id));
-      if (leadIndex !== -1) {
-        const leadStatus = db.db.leads[leadIndex].status;
-        if (leadStatus === 'Registration Completed') {
-          db.db.leads.splice(leadIndex, 1);
-          db.save();
-          console.log(`✅ Lead ${lead_id} removed after conversion to client ${newClient.id}`);
+      try {
+        const existingLeads = await db.getLeads({ id: lead_id });
+        if (existingLeads.length > 0) {
+          const lead = existingLeads[0];
+          if (lead.status === 'Registration Completed') {
+            // Lead is already marked as completed, that's fine
+            console.log(`✅ Lead ${lead_id} already marked as Registration Completed`);
+          } else {
+            // Update lead status to Registration Completed
+            await db.updateLead(lead_id, { status: 'Registration Completed' });
+            console.log(`✅ Lead ${lead_id} updated to Registration Completed after conversion to client ${newClient.id}`);
+          }
         } else {
-          console.log(`⚠️ Lead ${lead_id} status is "${leadStatus}" but should be "Registration Completed". Not removing lead.`);
+          console.log(`⚠️ Lead ${lead_id} not found in database. May have already been removed.`);
         }
-      } else {
-        console.log(`⚠️ Lead ${lead_id} not found in database. May have already been removed.`);
+      } catch (error) {
+        console.error(`⚠️ Error updating lead ${lead_id}:`, error.message);
       }
     }
 
@@ -348,7 +357,7 @@ router.post('/', authenticate, [
       snehaUsers = await db.getUsers({ name: 'SNEHA' });
       snehaUser = snehaUsers[0];
     }
-    
+
     if (snehaUser) {
       // Auto-assign to Sneha
       const updatedClient = await db.updateClient(newClient.id, {
@@ -418,7 +427,7 @@ router.put('/:id', authenticate, async (req, res) => {
       'email', 'age', 'occupation', 'qualification', 'year_of_experience', 'country', 'target_country', 'residing_country', 'program',
       'assessment_authority', 'occupation_mapped', 'registration_fee_paid',
       'amount_paid', 'fee_status', 'processing_staff_id', 'processing_status', 'payment_due_date',
-      'completed_actions'
+      'completed_actions' // Array of completed processing actions: ['Hand over to Australia', 'Confirming pending payment done', 'Service agreement submitted']
     ];
 
     allowedFields.forEach(field => {
@@ -432,18 +441,35 @@ router.put('/:id', authenticate, async (req, res) => {
         }
       }
     });
-    
+
     console.log('📝 Final updates object:', JSON.stringify(updates, null, 2));
 
     // Handle fee_status changes
     if (updates.fee_status === 'Payment Pending' && !existingClient.payment_due_date) {
-      // Set 10-day timer
+      // Set 10-day timer (shows due 2 days before)
       const dueDate = new Date();
       dueDate.setDate(dueDate.getDate() + 10);
       updates.payment_due_date = dueDate.toISOString();
+      console.log(`⏰ Payment due date set to: ${dueDate.toISOString()} (10 days from now)`);
     } else if (updates.fee_status !== 'Payment Pending') {
       // Clear due date if not pending
       updates.payment_due_date = null;
+    }
+
+    // Handle completed_actions (for Kripa's processing tasks)
+    if (updates.completed_actions !== undefined) {
+      // Ensure it's an array
+      if (!Array.isArray(updates.completed_actions)) {
+        updates.completed_actions = [];
+      }
+      // Valid processing actions
+      const validActions = [
+        'Hand over to Australia',
+        'Confirming pending payment done',
+        'Service agreement submitted'
+      ];
+      // Filter to only include valid actions
+      updates.completed_actions = updates.completed_actions.filter(action => validActions.includes(action));
     }
 
     // Handle assignment to Kripa
@@ -458,21 +484,25 @@ router.put('/:id', authenticate, async (req, res) => {
         kripaUsers = await db.getUsers({ name: 'KRIPA' });
         kripaUser = kripaUsers[0];
       }
-      
+
       const processingStaffId = Number(updates.processing_staff_id);
       console.log('🔔 Assigning client to processing staff:', processingStaffId);
       console.log('Kripa user ID:', kripaUser?.id);
-      
+
       if (kripaUser && processingStaffId === kripaUser.id) {
         // Create notification for Kripa
-        const notification = db.createNotification({
-          user_id: kripaUser.id,
-          client_id: clientId,
-          type: 'client_assigned_processing',
-          message: `Client "${existingClient.name}" has been assigned to you for processing`,
-          created_by: userId,
-        });
-        console.log('✅ Notification created for Kripa:', notification);
+        try {
+          const notification = await db.createNotification({
+            user_id: kripaUser.id,
+            client_id: clientId,
+            type: 'client_assigned_processing',
+            message: `Client "${existingClient.name}" has been assigned to you for processing`,
+            created_by: userId,
+          });
+          console.log('✅ Notification created for Kripa:', notification);
+        } catch (error) {
+          console.error('Error creating notification for Kripa:', error);
+        }
       } else {
         console.log('⚠️ Kripa user not found or ID mismatch');
       }
@@ -480,7 +510,7 @@ router.put('/:id', authenticate, async (req, res) => {
 
     console.log('📝 Updating client with:', JSON.stringify(updates, null, 2));
     console.log('📝 Processing staff ID in updates:', updates.processing_staff_id, '(type:', typeof updates.processing_staff_id, ')');
-    
+
     const updatedClient = await db.updateClient(clientId, updates);
 
     if (!updatedClient) {
@@ -489,16 +519,19 @@ router.put('/:id', authenticate, async (req, res) => {
 
     console.log('✅ Client updated. New processing_staff_id:', updatedClient.processing_staff_id, '(type:', typeof updatedClient.processing_staff_id, ')');
     console.log('✅ Client updated. New processing_status:', updatedClient.processing_status);
-    
+
     // Verify the save worked by reading it back
-    const verifyClient = db.getClients({ id: clientId })[0];
-    console.log('🔍 Verification - Client from DB:', {
-      id: verifyClient?.id,
-      name: verifyClient?.name,
-      processing_staff_id: verifyClient?.processing_staff_id,
-      processing_staff_id_type: typeof verifyClient?.processing_staff_id
-    });
-    
+    const verifyClients = await db.getClients({ id: clientId });
+    const verifyClient = verifyClients[0];
+    if (verifyClient) {
+      console.log('🔍 Verification - Client from DB:', {
+        id: verifyClient.id,
+        name: verifyClient.name,
+        processing_staff_id: verifyClient.processing_staff_id,
+        processing_staff_id_type: typeof verifyClient.processing_staff_id
+      });
+    }
+
     res.json(updatedClient);
   } catch (error) {
     console.error('Update client error:', error);
@@ -510,13 +543,13 @@ router.put('/:id', authenticate, async (req, res) => {
 router.delete('/:id', authenticate, async (req, res) => {
   try {
     const role = req.user.role;
-    
+
     if (role !== 'ADMIN') {
       return res.status(403).json({ error: 'Only admin can delete clients' });
     }
 
     const clientId = parseInt(req.params.id);
-    const deleted = db.deleteClient(clientId);
+    const deleted = await db.deleteClient(clientId);
 
     if (!deleted) {
       return res.status(404).json({ error: 'Client not found' });

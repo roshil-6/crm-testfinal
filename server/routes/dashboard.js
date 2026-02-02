@@ -6,7 +6,10 @@ const router = express.Router();
 
 function getDateOnly(value) {
   if (!value) return null;
-  return value.split('T')[0];
+  if (value instanceof Date) {
+    return value.toISOString().split('T')[0];
+  }
+  return String(value).split('T')[0];
 }
 
 function buildLeadMetrics(leads) {
@@ -39,7 +42,7 @@ function buildLeadMetrics(leads) {
 async function getAccessibleUserIds(user) {
   const role = user.role;
   const userId = user.id;
-  
+
   if (role === 'ADMIN') {
     // Admin sees everyone
     return null; // null means all users
@@ -54,7 +57,7 @@ async function getAccessibleUserIds(user) {
     // Legacy STAFF role - see only themselves
     return [userId];
   }
-  
+
   return [userId]; // Default: only self
 }
 
@@ -66,10 +69,10 @@ router.get('/staff/:id', authenticate, async (req, res) => {
     const userId = req.user.id;
     const userName = req.user.name || '';
     const userEmail = req.user.email || '';
-    
+
     // Check if user is Emy
     const isEmy = userName === 'Emy' || userName === 'EMY' || userEmail === 'emy@toniosenora.com';
-    
+
     if (role !== 'ADMIN' && role !== 'SALES_TEAM_HEAD' && !isEmy) {
       return res.status(403).json({ error: 'Admin, Sales Team Head, or Emy access required' });
     }
@@ -83,17 +86,17 @@ router.get('/staff/:id', authenticate, async (req, res) => {
     console.log('🔍 Fetching dashboard for staff ID:', staffId);
     const staffUsers = await db.getUsers({ id: staffId });
     const staffUser = staffUsers[0];
-    
+
     // Check if this is Sneha or Kripa (they can be ADMIN but are also processing team)
     const isSneha = staffUser && (staffUser.name === 'Sneha' || staffUser.name === 'SNEHA' || staffUser.email === 'sneha@toniosenora.com');
     const isKripa = staffUser && (staffUser.name === 'Kripa' || staffUser.name === 'KRIPA' || staffUser.email === 'kripa@toniosenora.com');
     const isProcessingTeam = isSneha || isKripa;
-    
+
     if (!staffUser) {
       console.error('❌ Staff member not found:', { staffId });
       return res.status(404).json({ error: 'Staff member not found' });
     }
-    
+
     // Allow Sneha and Kripa even if they're ADMIN (they're processing team members)
     if (staffUser.role === 'ADMIN' && !isProcessingTeam) {
       console.error('❌ Staff member is admin (not processing team):', { staffId, name: staffUser.name, role: staffUser.role });
@@ -126,13 +129,54 @@ router.get('/staff/:id', authenticate, async (req, res) => {
     if (isProcessingTeam) {
       // Processing Team Dashboard - Show client processing data
       let processingClients = [];
-      
+      let snehaClientsList = []; // For Kripa: Sneha's clients section
+
+      // Get Sneha user ID for Kripa's dashboard
+      let snehaUserId = null;
+      if (isKripa) {
+        try {
+          const snehaUsers = await db.getUsers({ email: 'sneha@toniosenora.com' });
+          if (snehaUsers.length > 0) {
+            snehaUserId = snehaUsers[0].id;
+          } else {
+            const snehaByName = await db.getUsers({ name: 'Sneha' });
+            if (snehaByName.length > 0) snehaUserId = snehaByName[0].id;
+          }
+        } catch (error) {
+          console.error('Error finding Sneha user:', error);
+        }
+      }
+
       if (isSneha) {
-        // Sneha's clients (assigned to her)
-        processingClients = await db.getClients({ assigned_staff_id: staffId });
+        // Sneha's clients (assigned to her for fee management)
+        const allClients = await db.getClients({});
+        processingClients = allClients.filter(c =>
+          c.processing_staff_id === staffId || // PRIMARY: Assigned for processing
+          c.assigned_staff_id === staffId || // SECONDARY: Assigned as sales rep
+          (c.processing_staff_id === null && c.assigned_staff_id !== null) // FALLBACK: Newly registered/Unassigned processing
+        );
       } else if (isKripa) {
         // Kripa's clients (assigned for processing)
         processingClients = await db.getClients({ processing_staff_id: staffId });
+
+        // Also get Sneha's clients (to help if Sneha is on leave)
+        if (snehaUserId) {
+          const snehaClients = await db.getClients({ assigned_staff_id: snehaUserId });
+          snehaClientsList = snehaClients.map(client => ({
+            id: client.id,
+            name: client.name,
+            phone_number: client.phone_number,
+            phone_country_code: client.phone_country_code,
+            email: client.email,
+            fee_status: client.fee_status,
+            amount_paid: client.amount_paid,
+            payment_due_date: client.payment_due_date,
+            processing_status: client.processing_status,
+            assigned_staff_id: client.assigned_staff_id,
+            created_at: client.created_at,
+            updated_at: client.updated_at,
+          }));
+        }
       }
 
       // Calculate processing metrics
@@ -156,9 +200,45 @@ router.get('/staff/:id', authenticate, async (req, res) => {
         amount_paid: client.amount_paid,
         payment_due_date: client.payment_due_date,
         processing_status: client.processing_status,
+        processing_staff_id: client.processing_staff_id,
+        assigned_staff_id: client.assigned_staff_id,
+        completed_actions: client.completed_actions || [],
         created_at: client.created_at,
         updated_at: client.updated_at,
       }));
+
+      // For Kripa: Also get Sneha's clients (to help if Sneha is on leave)
+      if (isKripa) {
+        // Find Sneha user ID
+        let snehaUsers = await db.getUsers({ email: 'sneha@toniosenora.com' });
+        let snehaUser = snehaUsers[0];
+        if (!snehaUser) {
+          snehaUsers = await db.getUsers({ name: 'Sneha' });
+          snehaUser = snehaUsers[0];
+        }
+        if (!snehaUser) {
+          snehaUsers = await db.getUsers({ name: 'SNEHA' });
+          snehaUser = snehaUsers[0];
+        }
+
+        if (snehaUser) {
+          const snehaClients = await db.getClients({ assigned_staff_id: snehaUser.id });
+          snehaClientsList = snehaClients.map(client => ({
+            id: client.id,
+            name: client.name,
+            phone_number: client.phone_number,
+            phone_country_code: client.phone_country_code,
+            email: client.email,
+            fee_status: client.fee_status,
+            amount_paid: client.amount_paid,
+            payment_due_date: client.payment_due_date,
+            processing_status: client.processing_status,
+            assigned_staff_id: client.assigned_staff_id,
+            created_at: client.created_at,
+            updated_at: client.updated_at,
+          }));
+        }
+      }
 
       res.json({
         role: role,
@@ -172,11 +252,18 @@ router.get('/staff/:id', authenticate, async (req, res) => {
         },
         metrics: processingMetrics,
         clientsList,
+        snehaClientsList: isKripa ? snehaClientsList : [], // For Kripa: Sneha's clients section
       });
     } else {
-      // Regular Staff Dashboard - Show lead metrics
+      // Regular Staff Dashboard - Show lead metrics AND clients they converted
       const staffLeads = await db.getLeads({ assigned_staff_id: staffId });
       const metrics = buildLeadMetrics(staffLeads);
+
+      // Get clients converted by this staff member (assigned_staff_id = staffId)
+      const staffClients = await db.getClients({ assigned_staff_id: staffId });
+
+      // Add client count to metrics
+      metrics.totalClients = staffClients.length;
 
       // Get all leads with details for this staff member
       const leadsList = staffLeads.map(lead => ({
@@ -193,10 +280,38 @@ router.get('/staff/:id', authenticate, async (req, res) => {
         updated_at: lead.updated_at,
       }));
 
+      // Get clients list (without payment details for non-authorized users)
+      const userName = req.user.name || '';
+      const userEmail = req.user.email || '';
+      const isEmyViewer = userName === 'Emy' || userName === 'EMY' || userEmail === 'emy@toniosenora.com';
+      const canViewPaymentData = role === 'ADMIN' || isEmyViewer;
+
+      const clientsList = staffClients.map(client => {
+        const clientData = {
+          id: client.id,
+          name: client.name,
+          phone_number: client.phone_number,
+          phone_country_code: client.phone_country_code,
+          email: client.email,
+          created_at: client.created_at,
+          updated_at: client.updated_at,
+        };
+
+        // Only include payment data if authorized
+        if (canViewPaymentData) {
+          clientData.fee_status = client.fee_status;
+          clientData.amount_paid = client.amount_paid;
+          clientData.payment_due_date = client.payment_due_date;
+        }
+
+        return clientData;
+      });
+
       console.log('📤 Sending regular staff dashboard:', {
         staffId: staffUser.id,
         staffName: staffUser.name,
-        leadsCount: staffLeads.length
+        leadsCount: staffLeads.length,
+        clientsCount: staffClients.length
       });
 
       res.json({
@@ -210,6 +325,7 @@ router.get('/staff/:id', authenticate, async (req, res) => {
         },
         metrics,
         leadsList,
+        clientsList, // Clients converted by this staff member
       });
     }
   } catch (error) {
@@ -243,10 +359,37 @@ router.get('/', authenticate, async (req, res) => {
           allLeads = [...allLeads, ...staffLeads];
         }
       }
-      
+
       // Get clients for restricted view
       const restrictedClients = await db.getClients();
-      
+
+      // Get Sneha and Kripa user IDs dynamically
+      let snehaUserId = null;
+      let kripaUserId = null;
+      try {
+        const snehaUsers = await db.getUsers({ email: 'sneha@toniosenora.com' });
+        if (snehaUsers.length > 0) {
+          snehaUserId = snehaUsers[0].id;
+        } else {
+          const snehaByName = await db.getUsers({ name: 'Sneha' });
+          if (snehaByName.length > 0) snehaUserId = snehaByName[0].id;
+        }
+      } catch (error) {
+        console.error('Error finding Sneha user:', error);
+      }
+
+      try {
+        const kripaUsers = await db.getUsers({ email: 'kripa@toniosenora.com' });
+        if (kripaUsers.length > 0) {
+          kripaUserId = kripaUsers[0].id;
+        } else {
+          const kripaByName = await db.getUsers({ name: 'Kripa' });
+          if (kripaByName.length > 0) kripaUserId = kripaByName[0].id;
+        }
+      } catch (error) {
+        console.error('Error finding Kripa user:', error);
+      }
+
       const metrics = {
         ...buildLeadMetrics(allLeads),
         totalClients: restrictedClients.length,
@@ -261,8 +404,8 @@ router.get('/', authenticate, async (req, res) => {
         },
         clientsByStatus: {
           'Total Clients': restrictedClients.length,
-          'With Sneha': restrictedClients.filter(c => c.assigned_staff_id === 12).length, // Sneha's ID is 12
-          'With Kripa': restrictedClients.filter(c => c.processing_staff_id === 8).length, // Kripa's ID is 8
+          'With Sneha': snehaUserId ? restrictedClients.filter(c => c.assigned_staff_id === snehaUserId).length : 0,
+          'With Kripa': kripaUserId ? restrictedClients.filter(c => c.processing_staff_id === kripaUserId).length : 0,
           'Payment Pending': restrictedClients.filter(c => c.fee_status === 'Payment Pending').length,
           '1st Installment Completed': restrictedClients.filter(c => c.fee_status === '1st Installment Completed').length,
           'PTE Fee Paid': restrictedClients.filter(c => c.fee_status === 'PTE Fee Paid').length,
@@ -276,14 +419,24 @@ router.get('/', authenticate, async (req, res) => {
       console.log('  Registration Completed count:', metrics.leadsByStatus['Registration Completed']);
 
       // Recent activity
-      const recentLeadsPromises = allLeads.slice(0, 5).map(async l => ({
-        type: 'status_change',
-        lead_id: l.id,
-        lead_name: l.name,
-        status: l.status,
-        timestamp: l.updated_at || l.created_at,
-        user_name: await db.getUserName(l.assigned_staff_id) || 'Unknown',
-      }));
+      const recentLeadsPromises = allLeads.slice(0, 5).map(async l => {
+        let userName = 'Unknown';
+        if (l.assigned_staff_id) {
+          try {
+            userName = await db.getUserName(l.assigned_staff_id) || 'Unknown';
+          } catch (error) {
+            console.error('Error getting user name:', error);
+          }
+        }
+        return {
+          type: 'status_change',
+          lead_id: l.id,
+          lead_name: l.name,
+          status: l.status,
+          timestamp: l.updated_at || l.created_at,
+          user_name: userName,
+        };
+      });
       const recentLeads = await Promise.all(recentLeadsPromises);
 
       const allComments = await db.getComments(null);
@@ -291,20 +444,32 @@ router.get('/', authenticate, async (req, res) => {
         .filter(c => c.lead_id)
         .slice(0, 5)
         .map(async c => {
-          const leads = await db.getLeads({ id: c.lead_id });
-          const lead = leads[0];
-          if (!lead || !lead.assigned_staff_id || Number(lead.assigned_staff_id) !== Number(userId)) {
+          try {
+            const leads = await db.getLeads({ id: c.lead_id });
+            const lead = leads[0];
+            if (!lead || !lead.assigned_staff_id || Number(lead.assigned_staff_id) !== Number(userId)) {
+              return null;
+            }
+            let userName = 'Unknown';
+            if (c.user_id) {
+              try {
+                userName = await db.getUserName(c.user_id) || 'Unknown';
+              } catch (error) {
+                console.error('Error getting user name for comment:', error);
+              }
+            }
+            return {
+              type: 'comment',
+              lead_id: c.lead_id,
+              lead_name: lead?.name || 'Unknown',
+              status: null,
+              timestamp: c.created_at,
+              user_name: userName,
+            };
+          } catch (error) {
+            console.error('Error processing comment:', error);
             return null;
           }
-          const userName = await db.getUserName(c.user_id) || 'Unknown';
-          return {
-            type: 'comment',
-            lead_id: c.lead_id,
-            lead_name: lead?.name || 'Unknown',
-            status: null,
-            timestamp: c.created_at,
-            user_name: userName,
-          };
         });
       const userComments = (await Promise.all(userCommentsPromises)).filter(c => c !== null);
 
@@ -321,7 +486,7 @@ router.get('/', authenticate, async (req, res) => {
       // ADMIN or SALES_TEAM_HEAD dashboard
       let allLeads = [];
       let allUsers = [];
-      
+
       if (role === 'ADMIN') {
         // Admin sees all leads and all users
         allLeads = await db.getLeads();
@@ -332,39 +497,64 @@ router.get('/', authenticate, async (req, res) => {
         console.log('📊 After reload - All users count:', allUsers.length);
         console.log('📊 All users:', allUsers.map(u => ({ id: u.id, name: u.name, email: u.email, role: u.role })));
         // Check if Sneha exists in allUsers
-        const snehaUser = allUsers.find(u => 
+        const snehaUser = allUsers.find(u =>
           u.name === 'Sneha' || u.name === 'SNEHA' || u.email === 'sneha@toniosenora.com'
         );
         console.log('📊 Sneha user found?', snehaUser ? `Yes - ID: ${snehaUser.id}, Name: ${snehaUser.name}, Role: ${snehaUser.role}` : 'No - Sneha not found in database!');
       } else if (role === 'SALES_TEAM_HEAD') {
-        // Sales team head sees leads assigned to themselves and ALL sales team members
-        // Get ALL sales team members (not just their own team)
-        const allSalesTeamMembers = await db.getUsers({ role: 'SALES_TEAM' });
+        // Sales team head sees leads assigned to themselves and ONLY their team members (managed by them)
+        const teamMembers = await db.getUsers({ managed_by: userId });
         console.log('📊 Sales Team Head Dashboard:');
         console.log('  Team Head ID:', userId);
         console.log('  Team Head Name:', req.user.name);
-        console.log('  Team Head Email:', req.user.email);
-        console.log('  All Sales Team Members Found:', allSalesTeamMembers.length);
-        console.log('  All Sales Team Members:', allSalesTeamMembers.map(u => ({ id: u.id, name: u.name, email: u.email, role: u.role, managed_by: u.managed_by })));
-        const accessibleIds = [userId, ...allSalesTeamMembers.map(u => u.id)];
+        console.log('  Team Members Found:', teamMembers.length);
+
+        const accessibleIds = [userId, ...teamMembers.map(u => u.id)];
         const allLeadsRaw = await db.getLeads();
         allLeads = allLeadsRaw.filter(l => !l.assigned_staff_id || accessibleIds.includes(l.assigned_staff_id));
-        // CRITICAL: Always include team head + ALL sales team members
-        allUsers = [req.user, ...allSalesTeamMembers];
+
+        // Include team head + team members for staff performance
+        allUsers = [req.user, ...teamMembers];
         console.log('  All Users (including team head):', allUsers.length);
-        console.log('  All Users List:', allUsers.map(u => ({ id: u.id, name: u.name, email: u.email, role: u.role })));
       }
-      
+
       const allAttendance = await db.getAttendance();
       // Get all clients for metrics - filter for sales team head
       let allClients = await db.getClients();
       if (role === 'SALES_TEAM_HEAD') {
-        // Sales team head sees clients assigned to themselves and ALL sales team members
-        const allSalesTeamMembers = await db.getUsers({ role: 'SALES_TEAM' });
-        const accessibleIds = [userId, ...allSalesTeamMembers.map(u => u.id)];
-        allClients = allClients.filter(c => 
+        // Sales team head sees clients assigned to themselves and their team members
+        const teamMembers = await db.getUsers({ managed_by: userId });
+        const accessibleIds = [userId, ...teamMembers.map(u => u.id)];
+        allClients = allClients.filter(c =>
           !c.assigned_staff_id || accessibleIds.includes(c.assigned_staff_id)
         );
+      }
+
+      // Get Sneha and Kripa user IDs dynamically
+      let snehaUserId = null;
+      let kripaUserId = null;
+      try {
+        const snehaUsers = await db.getUsers({ email: 'sneha@toniosenora.com' });
+        if (snehaUsers.length > 0) {
+          snehaUserId = snehaUsers[0].id;
+        } else {
+          const snehaByName = await db.getUsers({ name: 'Sneha' });
+          if (snehaByName.length > 0) snehaUserId = snehaByName[0].id;
+        }
+      } catch (error) {
+        console.error('Error finding Sneha user:', error);
+      }
+
+      try {
+        const kripaUsers = await db.getUsers({ email: 'kripa@toniosenora.com' });
+        if (kripaUsers.length > 0) {
+          kripaUserId = kripaUsers[0].id;
+        } else {
+          const kripaByName = await db.getUsers({ name: 'Kripa' });
+          if (kripaByName.length > 0) kripaUserId = kripaByName[0].id;
+        }
+      } catch (error) {
+        console.error('Error finding Kripa user:', error);
       }
 
       // Log for debugging
@@ -373,6 +563,8 @@ router.get('/', authenticate, async (req, res) => {
       console.log('  Total clients:', allClients.length);
       console.log('  Registration Completed (from leads):', allLeads.filter(l => l.status === 'Registration Completed').length);
       console.log('  Registration Completed (from clients):', allClients.length);
+      console.log('  Sneha User ID:', snehaUserId);
+      console.log('  Kripa User ID:', kripaUserId);
       console.log('  All status counts from leads:');
       const statusCounts = {
         'New': allLeads.filter(l => l.status === 'New').length,
@@ -387,8 +579,8 @@ router.get('/', authenticate, async (req, res) => {
       console.log('  All client status counts:');
       const clientStatusCounts = {
         'Total Clients': allClients.length,
-        'With Sneha': allClients.filter(c => c.assigned_staff_id === 12).length,
-        'With Kripa': allClients.filter(c => c.processing_staff_id === 8).length,
+        'With Sneha': snehaUserId ? allClients.filter(c => c.assigned_staff_id === snehaUserId).length : 0,
+        'With Kripa': kripaUserId ? allClients.filter(c => c.processing_staff_id === kripaUserId).length : 0,
         'Payment Pending': allClients.filter(c => c.fee_status === 'Payment Pending').length,
         '1st Installment Completed': allClients.filter(c => c.fee_status === '1st Installment Completed').length,
         'PTE Fee Paid': allClients.filter(c => c.fee_status === 'PTE Fee Paid').length,
@@ -415,8 +607,8 @@ router.get('/', authenticate, async (req, res) => {
         },
         clientsByStatus: {
           'Total Clients': allClients.length,
-          'With Sneha': allClients.filter(c => c.assigned_staff_id === 12).length, // Sneha's ID is 12
-          'With Kripa': allClients.filter(c => c.processing_staff_id === 8).length, // Kripa's ID is 8
+          'With Sneha': snehaUserId ? allClients.filter(c => c.assigned_staff_id === snehaUserId).length : 0,
+          'With Kripa': kripaUserId ? allClients.filter(c => c.processing_staff_id === kripaUserId).length : 0,
           'Payment Pending': allClients.filter(c => c.fee_status === 'Payment Pending').length,
           '1st Installment Completed': allClients.filter(c => c.fee_status === '1st Installment Completed').length,
           'PTE Fee Paid': allClients.filter(c => c.fee_status === 'PTE Fee Paid').length,
@@ -438,7 +630,7 @@ router.get('/', authenticate, async (req, res) => {
         console.log('📊 Staff Performance - After filtering (including Sneha/Kripa if ADMIN):', staffUsers.length);
         console.log('📊 Staff Performance - User names:', staffUsers.map(u => ({ id: u.id, name: u.name, email: u.email, role: u.role })));
         // Check if Sneha is in the list
-        const snehaInList = staffUsers.find(u => 
+        const snehaInList = staffUsers.find(u =>
           u.name === 'Sneha' || u.name === 'SNEHA' || u.email === 'sneha@toniosenora.com'
         );
         console.log('📊 Sneha in staff list?', snehaInList ? `Yes - ID: ${snehaInList.id}, Role: ${snehaInList.role}` : 'No');
@@ -451,7 +643,7 @@ router.get('/', authenticate, async (req, res) => {
         console.log('  All Users:', allUsers.map(u => ({ id: u.id, name: u.name, email: u.email, role: u.role })));
         console.log('  Staff Users Count:', staffUsers.length);
         console.log('  Staff Users:', staffUsers.map(u => ({ id: u.id, name: u.name, email: u.email, role: u.role })));
-        
+
         // Ensure at least the team head is included (safety check)
         if (staffUsers.length === 0) {
           console.error('❌ CRITICAL ERROR: No staff users found for sales team head!');
@@ -459,7 +651,7 @@ router.get('/', authenticate, async (req, res) => {
           staffUsers = [req.user];
         }
       }
-      
+
       // CRITICAL: Always create staffPerformance for ALL staffUsers, even if they have 0 leads/clients
       staffPerformance = staffUsers.map(staff => {
         const staffLeads = allLeads.filter(l => l.assigned_staff_id === staff.id);
@@ -485,19 +677,19 @@ router.get('/', authenticate, async (req, res) => {
         }
         return a.name.localeCompare(b.name);
       });
-      
+
       // Log staff performance for sales team head
       if (role === 'SALES_TEAM_HEAD') {
         console.log('📊 Sales Team Head - Final Staff Performance:');
         console.log('  Staff Performance Count:', staffPerformance.length);
-        console.log('  Staff Performance:', JSON.stringify(staffPerformance.map(s => ({ 
-          id: s.id, 
-          name: s.name, 
+        console.log('  Staff Performance:', JSON.stringify(staffPerformance.map(s => ({
+          id: s.id,
+          name: s.name,
           email: s.email,
-          total_leads: s.total_leads, 
-          converted_leads: s.converted_leads 
+          total_leads: s.total_leads,
+          converted_leads: s.converted_leads
         })), null, 2));
-        
+
         // Additional check
         if (staffPerformance.length === 0) {
           console.error('❌ WARNING: Sales Team Head has empty staffPerformance array!');
@@ -509,7 +701,7 @@ router.get('/', authenticate, async (req, res) => {
       // Attendance overview (last 7 days)
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      const recentAttendance = allAttendance.filter(a => 
+      const recentAttendance = allAttendance.filter(a =>
         new Date(a.check_in) >= sevenDaysAgo
       );
 
@@ -533,40 +725,71 @@ router.get('/', authenticate, async (req, res) => {
       const recentLeadsPromises = allLeads
         .sort((a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at))
         .slice(0, 20)
-        .map(async lead => ({
-          id: lead.id,
-          name: lead.name,
-          phone_number: lead.phone_number,
-          phone_country_code: lead.phone_country_code,
-          email: lead.email,
-          status: lead.status,
-          priority: lead.priority,
-          assigned_staff_id: lead.assigned_staff_id,
-          assigned_staff_name: lead.assigned_staff_id ? await db.getUserName(lead.assigned_staff_id) : null,
-          created_at: lead.created_at,
-          updated_at: lead.updated_at,
-        }));
+        .map(async lead => {
+          let assignedStaffName = null;
+          if (lead.assigned_staff_id) {
+            try {
+              assignedStaffName = await db.getUserName(lead.assigned_staff_id);
+            } catch (error) {
+              console.error('Error getting assigned staff name:', error);
+            }
+          }
+          return {
+            id: lead.id,
+            name: lead.name,
+            phone_number: lead.phone_number,
+            phone_country_code: lead.phone_country_code,
+            email: lead.email,
+            status: lead.status,
+            priority: lead.priority,
+            assigned_staff_id: lead.assigned_staff_id,
+            assigned_staff_name: assignedStaffName,
+            created_at: lead.created_at,
+            updated_at: lead.updated_at,
+          };
+        });
       const recentLeads = await Promise.all(recentLeadsPromises);
 
       // Recent clients (last 20, sorted by most recent)
       const recentClientsPromises = allClients
         .sort((a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at))
         .slice(0, 20)
-        .map(async client => ({
-          id: client.id,
-          name: client.name,
-          phone_number: client.phone_number,
-          phone_country_code: client.phone_country_code,
-          email: client.email,
-          status: 'Client',
-          fee_status: client.fee_status,
-          assigned_staff_id: client.assigned_staff_id,
-          assigned_staff_name: client.assigned_staff_id ? await db.getUserName(client.assigned_staff_id) : null,
-          processing_staff_id: client.processing_staff_id,
-          processing_staff_name: client.processing_staff_id ? await db.getUserName(client.processing_staff_id) : null,
-          created_at: client.created_at,
-          updated_at: client.updated_at,
-        }));
+        .map(async client => {
+          let assignedStaffName = null;
+          let processingStaffName = null;
+
+          if (client.assigned_staff_id) {
+            try {
+              assignedStaffName = await db.getUserName(client.assigned_staff_id);
+            } catch (error) {
+              console.error('Error getting assigned staff name:', error);
+            }
+          }
+
+          if (client.processing_staff_id) {
+            try {
+              processingStaffName = await db.getUserName(client.processing_staff_id);
+            } catch (error) {
+              console.error('Error getting processing staff name:', error);
+            }
+          }
+
+          return {
+            id: client.id,
+            name: client.name,
+            phone_number: client.phone_number,
+            phone_country_code: client.phone_country_code,
+            email: client.email,
+            status: 'Client',
+            fee_status: client.fee_status,
+            assigned_staff_id: client.assigned_staff_id,
+            assigned_staff_name: assignedStaffName,
+            processing_staff_id: client.processing_staff_id,
+            processing_staff_name: processingStaffName,
+            created_at: client.created_at,
+            updated_at: client.updated_at,
+          };
+        });
       const recentClients = await Promise.all(recentClientsPromises);
 
       // Set cache-control header to prevent caching

@@ -164,39 +164,24 @@ const LeadDetail = () => {
     }
 
     try {
-      // First, update lead status to Registration Completed
-      await axios.put(`${API_BASE_URL}/api/leads/${id}`, {
-        status: 'Registration Completed',
-      });
-      
-      // Then create client from lead (this will remove the lead)
-      const clientPayload = {
-        ...formData,
-        lead_id: id,
+      // Use the new complete-registration endpoint
+      const response = await axios.post(`${API_BASE_URL}/api/leads/${id}/complete-registration`, {
         assessment_authority: registrationData.assessment_authority,
         occupation_mapped: registrationData.occupation_mapped,
         registration_fee_paid: registrationData.registration_fee_paid,
-      };
+      });
 
-      const clientResponse = await axios.post(`${API_BASE_URL}/api/clients`, clientPayload);
-
-      console.log('✅ Client created:', clientResponse.data);
-      alert('Client created successfully! Lead has been converted to client.');
+      console.log('✅ Registration completed:', response.data);
+      alert('Lead converted to client successfully! The client is now accessible to the processing team (Sneha and Kripa).');
       
-      // Navigate to clients page - it will auto-refresh
+      // Close modal and navigate to clients page
+      setShowRegistrationModal(false);
       navigate('/clients');
     } catch (error) {
-      console.error('Error creating client:', error);
-      console.error('Error details:', {
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        data: error.response?.data,
-        url: error.config?.url,
-        method: error.config?.method,
-      });
+      console.error('Error completing registration:', error);
       const errorMessage = error.response?.data?.error || 
                           error.response?.data?.message ||
-                          (error.response?.status === 404 ? 'Client route not found. Please restart the server.' : 'Error creating client. Please try again.');
+                          (error.response?.status === 404 ? 'Lead not found' : 'Error completing registration. Please try again.');
       alert(errorMessage);
     }
   };

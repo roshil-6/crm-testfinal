@@ -14,7 +14,8 @@
     "create-all-users": "node scripts/createAllUsers.js",
     "backup": "node scripts/backupDatabase.js",
     "restore": "node scripts/restoreBackup.js",
-    "production-setup": "node scripts/productionSetup.js"
+    "production-setup": "node scripts/productionSetup.js",
+    "migrate-client-columns": "node scripts/addClientColumns.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
