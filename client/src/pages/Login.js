@@ -62,11 +62,6 @@ const Login = () => {
             {loading ? 'Logging in...' : 'Login'}
           </button>
         </form>
-        <div className="login-info">
-          <p><strong>Demo Credentials:</strong></p>
-          <p>Admin: admin@toniosenora.com / admin123</p>
-          <p>Staff: emy@toniosenora.com / staff123</p>
-        </div>
       </div>
     </div>
   );

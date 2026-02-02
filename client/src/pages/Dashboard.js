@@ -18,7 +18,7 @@ const Dashboard = () => {
 
   // Check if user is Sneha
   const isSneha = user?.name === 'Sneha' || user?.name === 'SNEHA' || user?.email === 'sneha@toniosenora.com';
-  
+
   // Check if user is Kripa
   const isKripa = user?.name === 'Kripa' || user?.name === 'KRIPA' || user?.email === 'kripa@toniosenora.com';
 
@@ -29,11 +29,11 @@ const Dashboard = () => {
   const fetchDashboardData = useCallback(async () => {
     const currentStaffId = staffId; // Capture current staffId
     const isAutoRefresh = isAutoRefreshRef.current;
-    
+
     try {
       const endpoint = currentStaffId ? `${API_BASE_URL}/api/dashboard/staff/${currentStaffId}` : `${API_BASE_URL}/api/dashboard`;
       console.log('🔍 Fetching dashboard data:', { currentStaffId, endpoint, isAutoRefresh });
-      
+
       const response = await axios.get(endpoint, {
         headers: {
           'Cache-Control': 'no-cache',
@@ -43,7 +43,7 @@ const Dashboard = () => {
           _t: new Date().getTime() // Add timestamp to prevent caching
         }
       });
-      
+
       console.log('📥 Dashboard data received:', {
         staffId: currentStaffId || 'main',
         staffName: response.data.staff?.name,
@@ -64,7 +64,7 @@ const Dashboard = () => {
         console.log('🔍 SALES_TEAM_HEAD - staffPerformance isArray:', Array.isArray(response.data.staffPerformance));
         console.log('🔍 SALES_TEAM_HEAD - staffPerformance length:', response.data.staffPerformance?.length);
       }
-      
+
       // Verify we got the correct staff data when viewing a specific staff
       if (currentStaffId && response.data.staff) {
         const receivedStaffId = Number(response.data.staff.id);
@@ -85,17 +85,17 @@ const Dashboard = () => {
           return;
         }
       }
-      
+
       setData(response.data);
     } catch (error) {
       console.error('❌ Error fetching dashboard data:', error);
-      
+
       // During auto-refresh, don't redirect or clear data on errors
       if (isAutoRefresh) {
         console.warn('⚠️ Auto-refresh error - keeping current data:', error.message);
         return;
       }
-      
+
       // Only redirect/clear on initial load errors
       if (error.response?.status === 404) {
         console.error('Staff not found, redirecting to main dashboard...');
@@ -111,6 +111,28 @@ const Dashboard = () => {
       }
     }
   }, [staffId, navigate]);
+
+  // Function to fetch ONLY metrics for auto-update
+  const fetchMetricsOnly = useCallback(async () => {
+    const currentStaffId = staffId;
+    try {
+      const endpoint = currentStaffId ? `${API_BASE_URL}/api/dashboard/staff/${currentStaffId}` : `${API_BASE_URL}/api/dashboard`;
+      const response = await axios.get(endpoint, {
+        params: { metricsOnly: 'true', _t: new Date().getTime() },
+        headers: { 'Cache-Control': 'no-cache' }
+      });
+
+      if (response.data.metrics) {
+        setData(prevData => {
+          if (!prevData) return prevData;
+          return { ...prevData, metrics: response.data.metrics };
+        });
+        console.log('📈 Metrics auto-updated:', response.data.metrics);
+      }
+    } catch (error) {
+      console.warn('⚠️ Metrics auto-update failed:', error.message);
+    }
+  }, [staffId]);
 
   useEffect(() => {
     if (staffId && user && user.role !== 'ADMIN' && user.role !== 'SALES_TEAM_HEAD' && !isEmy) {
@@ -132,7 +154,7 @@ const Dashboard = () => {
   // Auto-refresh when page becomes visible (user switches tabs/windows)
   useEffect(() => {
     if (isSneha || isKripa) return; // Skip for specialized dashboards
-    
+
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && user) {
         console.log('🔄 Dashboard page visible, refreshing...', { staffId });
@@ -156,15 +178,10 @@ const Dashboard = () => {
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('focus', handleFocus);
 
-    // Auto-refresh every 10 seconds - preserve staffId if viewing a specific staff
+    // ONLY auto-update metrics every 10 seconds
     const interval = setInterval(() => {
       if (user && !isSneha && !isKripa) {
-        // Mark this as an auto-refresh to prevent unwanted redirects
-        isAutoRefreshRef.current = true;
-        console.log('🔄 Auto-refreshing dashboard...', { staffId });
-        fetchDashboardData().finally(() => {
-          isAutoRefreshRef.current = false;
-        });
+        fetchMetricsOnly();
       }
     }, 10000);
 
@@ -173,7 +190,7 @@ const Dashboard = () => {
       window.removeEventListener('focus', handleFocus);
       clearInterval(interval);
     };
-  }, [user, isSneha, isKripa, staffId, fetchDashboardData]); // Include staffId and fetchDashboardData in dependencies
+  }, [user, isSneha, isKripa, staffId, fetchDashboardData, fetchMetricsOnly]);
 
   // Debug: Log metrics when data changes (must be before conditional returns)
   useEffect(() => {
@@ -207,7 +224,7 @@ const Dashboard = () => {
   // 1. User is Sneha viewing their own dashboard (no staffId)
   // 2. Admin is viewing Sneha's dashboard (staffId matches Sneha)
   const viewingSneha = isSneha && !staffId;
-  
+
   // Check if admin is viewing Sneha - use multiple methods to detect
   // Method 1: Check if data is loaded and contains Sneha info
   // Method 2: If data not loaded yet but staffId exists, fetch staff info to check
@@ -221,7 +238,7 @@ const Dashboard = () => {
     // If data not loaded yet, we'll check in the isStaffDetailView section below
     (!data && loading)
   );
-  
+
   // Show Kripa's dashboard if:
   // 1. User is Kripa viewing their own dashboard (no staffId)
   // 2. Admin is viewing Kripa's dashboard (staffId matches Kripa)
@@ -257,13 +274,13 @@ const Dashboard = () => {
   // Sneha's ID is 12, Kripa's ID is 8 (from backend code)
   const snehaStaffId = 12;
   const kripaStaffId = 8;
-  
+
   const adminViewingSnehaAfterLoad = staffId && (user?.role === 'ADMIN' || user?.role === 'SALES_TEAM_HEAD') && (
     Number(staffId) === snehaStaffId || // Direct ID check
     (data.staff && (data.staff.name === 'Sneha' || data.staff.name === 'SNEHA' || data.staff.email === 'sneha@toniosenora.com')) ||
     (data.processingRole === 'sneha')
   );
-  
+
   const adminViewingKripaAfterLoad = staffId && (user?.role === 'ADMIN' || user?.role === 'SALES_TEAM_HEAD') && (
     Number(staffId) === kripaStaffId || // Direct ID check
     (data.staff && (data.staff.name === 'Kripa' || data.staff.name === 'KRIPA' || data.staff.email === 'kripa@toniosenora.com')) ||
@@ -347,27 +364,27 @@ const Dashboard = () => {
 
   const getStatusBoxColor = (status) => {
     const colors = {
-      'New': { 
+      'New': {
         backgroundColor: '#BFDBFE', // Light blue
         color: '#1e3a8a', // Dark blue text
         borderColor: '#3b82f6' // Blue border
       },
-      'Follow-up': { 
+      'Follow-up': {
         backgroundColor: '#FBCFE8', // Light pink
         color: '#831843', // Dark pink text
         borderColor: '#ec4899' // Pink border
       },
-      'Prospect': { 
+      'Prospect': {
         backgroundColor: '#A7F3D0', // Light green
         color: '#065f46', // Dark green text
         borderColor: '#10b981' // Green border
       },
-      'Pending Lead': { 
+      'Pending Lead': {
         backgroundColor: '#FDE68A', // Light yellow
         color: '#92400e', // Dark yellow/brown text
         borderColor: '#f59e0b' // Yellow border
       },
-      'Closed / Rejected': { 
+      'Closed / Rejected': {
         backgroundColor: '#E5E7EB', // Light gray
         color: '#374151', // Dark gray text
         borderColor: '#6b7280' // Gray border
@@ -509,11 +526,11 @@ const Dashboard = () => {
     // Check if this is a processing team member (Sneha or Kripa)
     const isProcessingTeam = data.isProcessingTeam === true;
     const processingRole = data.processingRole; // 'sneha' or 'kripa'
-    
+
     // If admin is viewing Sneha or Kripa, show their specialized dashboard instead of table view
     const isAdminViewingSneha = processingRole === 'sneha' && (user?.role === 'ADMIN' || user?.role === 'SALES_TEAM_HEAD');
     const isAdminViewingKripa = processingRole === 'kripa' && (user?.role === 'ADMIN' || user?.role === 'SALES_TEAM_HEAD');
-    
+
     // For Sneha and Kripa, render their specialized dashboards for admins
     if (isAdminViewingSneha) {
       return (
@@ -525,7 +542,7 @@ const Dashboard = () => {
         </div>
       );
     }
-    
+
     if (isAdminViewingKripa) {
       return (
         <div>
@@ -654,12 +671,12 @@ const Dashboard = () => {
                           </td>
                           <td>
                             <span className="status-badge" style={{
-                              backgroundColor: client.fee_status === 'Payment Pending' ? '#FEE2E2' : 
-                                             client.fee_status === '1st Installment Completed' ? '#D1FAE5' :
-                                             client.fee_status === 'PTE Fee Paid' ? '#DBEAFE' : '#F3F4F6',
+                              backgroundColor: client.fee_status === 'Payment Pending' ? '#FEE2E2' :
+                                client.fee_status === '1st Installment Completed' ? '#D1FAE5' :
+                                  client.fee_status === 'PTE Fee Paid' ? '#DBEAFE' : '#F3F4F6',
                               color: client.fee_status === 'Payment Pending' ? '#DC2626' :
-                                    client.fee_status === '1st Installment Completed' ? '#059669' :
-                                    client.fee_status === 'PTE Fee Paid' ? '#2563EB' : '#6B7280',
+                                client.fee_status === '1st Installment Completed' ? '#059669' :
+                                  client.fee_status === 'PTE Fee Paid' ? '#2563EB' : '#6B7280',
                               padding: '4px 12px',
                               borderRadius: '12px',
                               fontSize: '12px',
@@ -715,6 +732,195 @@ const Dashboard = () => {
             <div className="recent-leads-section">
               <h2>Assigned Leads</h2>
               {data.leadsList && data.leadsList.length > 0 ? (
+                <div className="leads-list-table">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Phone</th>
+                        <th>Email</th>
+                        <th>Status</th>
+                        <th>Priority</th>
+                        <th>Comment</th>
+                        <th>Follow-up Date</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(data.leadsList || []).map((lead) => (
+                        <tr key={lead.id}>
+                          <td>{lead.name}</td>
+                          <td>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <FiPhone style={{ fontSize: '14px', opacity: 0.6 }} />
+                              {lead.phone_number}
+                            </div>
+                          </td>
+                          <td>
+                            {lead.email ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <FiMail style={{ fontSize: '14px', opacity: 0.6 }} />
+                                {lead.email}
+                              </div>
+                            ) : (
+                              '-'
+                            )}
+                          </td>
+                          <td>
+                            <span
+                              className="status-badge"
+                              style={{
+                                backgroundColor: `${getStatusColor(lead.status)}20`,
+                                color: getStatusColor(lead.status),
+                                padding: '4px 12px',
+                                borderRadius: '12px',
+                                fontSize: '12px',
+                                fontWeight: 500,
+                              }}
+                            >
+                              {lead.status}
+                            </span>
+                          </td>
+                          <td>
+                            {lead.priority ? (
+                              <span
+                                className="priority-badge"
+                                style={{
+                                  backgroundColor: `${getPriorityColor(lead.priority)}20`,
+                                  color: getPriorityColor(lead.priority),
+                                  padding: '4px 12px',
+                                  borderRadius: '12px',
+                                  fontSize: '12px',
+                                  fontWeight: 500,
+                                }}
+                              >
+                                {formatPriority(lead.priority)}
+                              </span>
+                            ) : (
+                              '-'
+                            )}
+                          </td>
+                          <td>
+                            {lead.comment ? (
+                              <div style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={lead.comment}>
+                                {lead.comment.length > 30 ? `${lead.comment.substring(0, 30)}...` : lead.comment}
+                              </div>
+                            ) : (
+                              '-'
+                            )}
+                          </td>
+                          <td>
+                            {lead.follow_up_date ? (
+                              new Date(lead.follow_up_date).toLocaleDateString()
+                            ) : (
+                              '-'
+                            )}
+                          </td>
+                          <td>
+                            <button
+                              className="btn-view-lead"
+                              onClick={() => navigate(`/leads/${lead.id}`)}
+                            >
+                              <FiEdit2 /> View
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p>No leads assigned to this staff member</p>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  // ADMIN Dashboard
+  return (
+    <div className="dashboard">
+      <div className="dashboard-header">
+        <h1 className="dashboard-title">
+          {data.role === 'ADMIN' ? 'Company Dashboard' : 'Team Dashboard'}
+        </h1>
+        {data.role === 'SALES_TEAM_HEAD' && (
+          <p style={{
+            color: '#6b7280',
+            fontSize: '14px',
+            marginTop: '8px',
+            fontStyle: 'italic'
+          }}>
+            Monitor and manage your team members' performance
+          </p>
+        )}
+      </div>
+
+      {/* Metrics Overview */}
+      <div className="dashboard-section">
+        <div className="metrics-grid">
+          <div className="metric-card">
+            <div className="metric-icon" style={{ background: '#FFF4D6' }}>
+              <FiUsers style={{ color: '#D4AF37' }} />
+            </div>
+            <div className="metric-content">
+              <div className="metric-value">{data.metrics.totalLeads}</div>
+              <div className="metric-label">Total Leads</div>
+            </div>
+          </div>
+          {data.metrics.totalClients !== undefined && (
+            <div className="metric-card">
+              <div className="metric-icon" style={{ background: '#D1FAE5' }}>
+                <FiCheck style={{ color: '#10B981' }} />
+              </div>
+              <div className="metric-content">
+                <div className="metric-value">{data.metrics.totalClients}</div>
+                <div className="metric-label">Total Clients</div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Status Breakdown */}
+      <div className="dashboard-section">
+        <div className="status-breakdown">
+          <h2>Leads by Status</h2>
+          <div className="status-grid">
+            {Object.entries(data.metrics?.leadsByStatus || {}).map(([status, count]) => (
+              <div key={status} className="status-item">
+                <span className="status-label">{status}</span>
+                <span className="status-count">{count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Client Metrics */}
+      {data.metrics.clientsByStatus && (
+        <div className="dashboard-section">
+          <div className="status-breakdown">
+            <h2>Clients Overview</h2>
+            <div className="status-grid">
+              {Object.entries(data.metrics?.clientsByStatus || {}).map(([status, count]) => (
+                <div key={status} className="status-item">
+                  <span className="status-label">{status}</span>
+                  <span className="status-count">{count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Recent Leads */}
+      <div className="dashboard-section">
+        <div className="recent-leads-section">
+          <h2>Recent Leads</h2>
+          {data.recentLeads && data.recentLeads.length > 0 ? (
             <div className="leads-list-table">
               <table>
                 <thead>
@@ -724,19 +930,22 @@ const Dashboard = () => {
                     <th>Email</th>
                     <th>Status</th>
                     <th>Priority</th>
-                    <th>Comment</th>
-                    <th>Follow-up Date</th>
+                    <th>Assigned To</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {(data.leadsList || []).map((lead) => (
+                  {(data.recentLeads || []).map((lead) => (
                     <tr key={lead.id}>
                       <td>{lead.name}</td>
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                           <FiPhone style={{ fontSize: '14px', opacity: 0.6 }} />
-                          {lead.phone_number}
+                          {lead.phone_country_code && lead.phone_number ? (
+                            <span>{lead.phone_country_code} {lead.phone_number}</span>
+                          ) : (
+                            lead.phone_number || '-'
+                          )}
                         </div>
                       </td>
                       <td>
@@ -784,20 +993,15 @@ const Dashboard = () => {
                         )}
                       </td>
                       <td>
-                        {lead.comment ? (
-                          <div style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={lead.comment}>
-                            {lead.comment.length > 30 ? `${lead.comment.substring(0, 30)}...` : lead.comment}
-                          </div>
-                        ) : (
-                          '-'
-                        )}
-                      </td>
-                      <td>
-                        {lead.follow_up_date ? (
-                          new Date(lead.follow_up_date).toLocaleDateString()
-                        ) : (
-                          '-'
-                        )}
+                        <span
+                          style={{
+                            fontWeight: lead.assigned_staff_name ? 600 : 400,
+                            color: lead.assigned_staff_name ? '#8B6914' : '#9ca3af',
+                            fontSize: '14px',
+                          }}
+                        >
+                          {lead.assigned_staff_name || 'Unassigned'}
+                        </span>
                       </td>
                       <td>
                         <button
@@ -813,204 +1017,17 @@ const Dashboard = () => {
               </table>
             </div>
           ) : (
-            <p>No leads assigned to this staff member</p>
+            <p>No leads found</p>
           )}
-        </div>
-          </>
-        )}
-      </div>
-    );
-  }
-
-  // ADMIN Dashboard
-  return (
-    <div className="dashboard">
-      <div className="dashboard-header">
-        <h1 className="dashboard-title">
-          {data.role === 'ADMIN' ? 'Company Dashboard' : 'Team Dashboard'}
-        </h1>
-        {data.role === 'SALES_TEAM_HEAD' && (
-          <p style={{ 
-            color: '#6b7280', 
-            fontSize: '14px', 
-            marginTop: '8px',
-            fontStyle: 'italic' 
-          }}>
-            Monitor and manage your team members' performance
-          </p>
-        )}
-      </div>
-      
-      {/* Metrics Overview */}
-      <div className="dashboard-section">
-        <div className="metrics-grid">
-          <div className="metric-card">
-            <div className="metric-icon" style={{ background: '#FFF4D6' }}>
-              <FiUsers style={{ color: '#D4AF37' }} />
-            </div>
-            <div className="metric-content">
-              <div className="metric-value">{data.metrics.totalLeads}</div>
-              <div className="metric-label">Total Leads</div>
-            </div>
-          </div>
-          {data.metrics.totalClients !== undefined && (
-            <div className="metric-card">
-              <div className="metric-icon" style={{ background: '#D1FAE5' }}>
-                <FiCheck style={{ color: '#10B981' }} />
-              </div>
-              <div className="metric-content">
-                <div className="metric-value">{data.metrics.totalClients}</div>
-                <div className="metric-label">Total Clients</div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Status Breakdown */}
-      <div className="dashboard-section">
-        <div className="status-breakdown">
-        <h2>Leads by Status</h2>
-        <div className="status-grid">
-          {Object.entries(data.metrics?.leadsByStatus || {}).map(([status, count]) => (
-            <div key={status} className="status-item">
-              <span className="status-label">{status}</span>
-              <span className="status-count">{count}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-      </div>
-
-      {/* Client Metrics */}
-      {data.metrics.clientsByStatus && (
-        <div className="dashboard-section">
-          <div className="status-breakdown">
-            <h2>Clients Overview</h2>
-            <div className="status-grid">
-              {Object.entries(data.metrics?.clientsByStatus || {}).map(([status, count]) => (
-                <div key={status} className="status-item">
-                  <span className="status-label">{status}</span>
-                  <span className="status-count">{count}</span>
-                </div>
-              ))}
-            </div>
+          <div style={{ marginTop: '16px' }}>
+            <button
+              className="btn-view-all-leads"
+              onClick={() => navigate('/leads')}
+            >
+              View All Leads
+            </button>
           </div>
         </div>
-      )}
-
-      {/* Recent Leads */}
-      <div className="dashboard-section">
-        <div className="recent-leads-section">
-        <h2>Recent Leads</h2>
-        {data.recentLeads && data.recentLeads.length > 0 ? (
-          <div className="leads-list-table">
-            <table>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Phone</th>
-                  <th>Email</th>
-                  <th>Status</th>
-                  <th>Priority</th>
-                  <th>Assigned To</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(data.recentLeads || []).map((lead) => (
-                  <tr key={lead.id}>
-                    <td>{lead.name}</td>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <FiPhone style={{ fontSize: '14px', opacity: 0.6 }} />
-                        {lead.phone_country_code && lead.phone_number ? (
-                          <span>{lead.phone_country_code} {lead.phone_number}</span>
-                        ) : (
-                          lead.phone_number || '-'
-                        )}
-                      </div>
-                    </td>
-                    <td>
-                      {lead.email ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <FiMail style={{ fontSize: '14px', opacity: 0.6 }} />
-                          {lead.email}
-                        </div>
-                      ) : (
-                        '-'
-                      )}
-                    </td>
-                    <td>
-                      <span
-                        className="status-badge"
-                        style={{
-                          backgroundColor: `${getStatusColor(lead.status)}20`,
-                          color: getStatusColor(lead.status),
-                          padding: '4px 12px',
-                          borderRadius: '12px',
-                          fontSize: '12px',
-                          fontWeight: 500,
-                        }}
-                      >
-                        {lead.status}
-                      </span>
-                    </td>
-                    <td>
-                      {lead.priority ? (
-                        <span
-                          className="priority-badge"
-                          style={{
-                            backgroundColor: `${getPriorityColor(lead.priority)}20`,
-                            color: getPriorityColor(lead.priority),
-                            padding: '4px 12px',
-                            borderRadius: '12px',
-                            fontSize: '12px',
-                            fontWeight: 500,
-                          }}
-                        >
-                          {formatPriority(lead.priority)}
-                        </span>
-                      ) : (
-                        '-'
-                      )}
-                    </td>
-                    <td>
-                      <span
-                        style={{
-                          fontWeight: lead.assigned_staff_name ? 600 : 400,
-                          color: lead.assigned_staff_name ? '#8B6914' : '#9ca3af',
-                          fontSize: '14px',
-                        }}
-                      >
-                        {lead.assigned_staff_name || 'Unassigned'}
-                      </span>
-                    </td>
-                    <td>
-                      <button
-                        className="btn-view-lead"
-                        onClick={() => navigate(`/leads/${lead.id}`)}
-                      >
-                        <FiEdit2 /> View
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <p>No leads found</p>
-        )}
-        <div style={{ marginTop: '16px' }}>
-          <button
-            className="btn-view-all-leads"
-            onClick={() => navigate('/leads')}
-          >
-            View All Leads
-          </button>
-        </div>
-      </div>
       </div>
 
       {/* Recent Clients */}
@@ -1125,143 +1142,143 @@ const Dashboard = () => {
       {(data.role === 'ADMIN' || data.role === 'SALES_TEAM_HEAD') && (
         <div className="dashboard-section">
           <div className="staff-performance">
-          <h2>{data.role === 'ADMIN' ? 'Staff List' : 'My Team Members'}</h2>
-          {data.role === 'SALES_TEAM_HEAD' && (
-            <p style={{ 
-              color: '#6b7280', 
-              fontSize: '13px', 
-              marginBottom: '16px' 
-            }}>
-              Click on any team member to view their detailed dashboard and monitor their performance
-            </p>
-          )}
-          {data && data.staffPerformance && Array.isArray(data.staffPerformance) && data.staffPerformance.length > 0 ? (
-            <div className="performance-table">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Total Leads</th>
-                    <th>Converted Clients</th>
-                    <th>In Processing</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(data.staffPerformance || []).map((staff) => {
-                    // Check if staff is Sneha or Kripa (Processing Team)
-                    const isSneha = staff.name === 'Sneha' || staff.name === 'SNEHA' || staff.email === 'sneha@toniosenora.com';
-                    const isKripa = staff.name === 'Kripa' || staff.name === 'KRIPA' || staff.email === 'kripa@toniosenora.com';
-                    const isProcessingTeam = isSneha || isKripa;
-                    // Check if this is the sales team head themselves
-                    const isTeamHead = staff.id === user?.id;
-                    
-                    return (
-                      <tr
-                        key={staff.id}
-                        className="staff-row"
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => navigate(`/dashboard/staff/${staff.id}`)}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault();
-                            navigate(`/dashboard/staff/${staff.id}`);
-                          }
-                        }}
-                        style={{
-                          ...(isProcessingTeam ? { 
-                            background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%)',
-                            borderLeft: '4px solid #667eea'
-                          } : {}),
-                          ...(isTeamHead ? {
-                            background: '#FFF4D6',
-                            borderLeft: '4px solid #D4AF37',
-                            fontWeight: 600
-                          } : {}),
-                          cursor: 'pointer',
-                          transition: 'background-color 0.2s'
-                        }}
-                        onMouseEnter={(e) => {
-                          if (!isProcessingTeam && !isTeamHead) {
-                            e.currentTarget.style.backgroundColor = '#F5F1E8';
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          if (!isProcessingTeam && !isTeamHead) {
-                            e.currentTarget.style.backgroundColor = '';
-                          }
-                        }}
-                      >
-                        <td>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span className="staff-link" style={{ 
-                              color: isTeamHead ? '#8B6914' : 'inherit',
-                              fontWeight: isTeamHead ? 600 : 'normal'
-                            }}>
-                              {staff.name}
-                              {isTeamHead && ' (You)'}
-                            </span>
-                            {isProcessingTeam && (
-                              <span style={{
-                                padding: '2px 8px',
-                                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                                color: '#FFFFFF',
-                                borderRadius: '10px',
-                                fontSize: '10px',
-                                fontWeight: 600,
-                                boxShadow: '0 1px 3px rgba(102, 126, 234, 0.3)'
+            <h2>{data.role === 'ADMIN' ? 'Staff List' : 'My Team Members'}</h2>
+            {data.role === 'SALES_TEAM_HEAD' && (
+              <p style={{
+                color: '#6b7280',
+                fontSize: '13px',
+                marginBottom: '16px'
+              }}>
+                Click on any team member to view their detailed dashboard and monitor their performance
+              </p>
+            )}
+            {data && data.staffPerformance && Array.isArray(data.staffPerformance) && data.staffPerformance.length > 0 ? (
+              <div className="performance-table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Total Leads</th>
+                      <th>Converted Clients</th>
+                      <th>In Processing</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(data.staffPerformance || []).map((staff) => {
+                      // Check if staff is Sneha or Kripa (Processing Team)
+                      const isSneha = staff.name === 'Sneha' || staff.name === 'SNEHA' || staff.email === 'sneha@toniosenora.com';
+                      const isKripa = staff.name === 'Kripa' || staff.name === 'KRIPA' || staff.email === 'kripa@toniosenora.com';
+                      const isProcessingTeam = isSneha || isKripa;
+                      // Check if this is the sales team head themselves
+                      const isTeamHead = staff.id === user?.id;
+
+                      return (
+                        <tr
+                          key={staff.id}
+                          className="staff-row"
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => navigate(`/dashboard/staff/${staff.id}`)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              navigate(`/dashboard/staff/${staff.id}`);
+                            }
+                          }}
+                          style={{
+                            ...(isProcessingTeam ? {
+                              background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%)',
+                              borderLeft: '4px solid #667eea'
+                            } : {}),
+                            ...(isTeamHead ? {
+                              background: '#FFF4D6',
+                              borderLeft: '4px solid #D4AF37',
+                              fontWeight: 600
+                            } : {}),
+                            cursor: 'pointer',
+                            transition: 'background-color 0.2s'
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!isProcessingTeam && !isTeamHead) {
+                              e.currentTarget.style.backgroundColor = '#F5F1E8';
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!isProcessingTeam && !isTeamHead) {
+                              e.currentTarget.style.backgroundColor = '';
+                            }
+                          }}
+                        >
+                          <td>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span className="staff-link" style={{
+                                color: isTeamHead ? '#8B6914' : 'inherit',
+                                fontWeight: isTeamHead ? 600 : 'normal'
                               }}>
-                                🔧 Processing
+                                {staff.name}
+                                {isTeamHead && ' (You)'}
                               </span>
-                            )}
-                            {data.role === 'SALES_TEAM_HEAD' && !isTeamHead && (
-                              <span style={{
-                                padding: '2px 8px',
-                                background: '#E0E7FF',
-                                color: '#4338CA',
-                                borderRadius: '10px',
-                                fontSize: '10px',
-                                fontWeight: 500
-                              }}>
-                                Team Member
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td>{staff.total_leads}</td>
-                        <td>{staff.converted_leads || 0}</td>
-                        <td>{staff.clients_in_processing || 0}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div style={{ padding: '20px', textAlign: 'center', color: '#6b7280' }}>
-              <p>No staff performance data available</p>
-              {data && data.role === 'SALES_TEAM_HEAD' && (
-                <div style={{ fontSize: '12px', marginTop: '8px', fontStyle: 'italic', textAlign: 'left', background: '#f5f5f5', padding: '10px', borderRadius: '4px', maxWidth: '600px', margin: '10px auto' }}>
-                  <p><strong>Debug Information:</strong></p>
-                  <p>staffPerformance exists: {data.staffPerformance ? 'Yes' : 'No'}</p>
-                  <p>staffPerformance type: {data.staffPerformance ? typeof data.staffPerformance : 'N/A'}</p>
-                  <p>staffPerformance isArray: {data.staffPerformance ? Array.isArray(data.staffPerformance) ? 'Yes' : 'No' : 'N/A'}</p>
-                  <p>staffPerformance length: {data.staffPerformance && Array.isArray(data.staffPerformance) ? data.staffPerformance.length : 'N/A'}</p>
-                  {data.staffPerformance && Array.isArray(data.staffPerformance) && data.staffPerformance.length > 0 && (
-                    <div style={{ marginTop: '10px' }}>
-                      <p><strong>Staff Members Found ({data.staffPerformance.length}):</strong></p>
-                      <ul style={{ marginLeft: '20px', textAlign: 'left' }}>
-                        {data.staffPerformance.map((staff, idx) => (
-                          <li key={idx}>{staff.name} (ID: {staff.id}, Leads: {staff.total_leads}, Clients: {staff.converted_leads || 0})</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+                              {isProcessingTeam && (
+                                <span style={{
+                                  padding: '2px 8px',
+                                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                  color: '#FFFFFF',
+                                  borderRadius: '10px',
+                                  fontSize: '10px',
+                                  fontWeight: 600,
+                                  boxShadow: '0 1px 3px rgba(102, 126, 234, 0.3)'
+                                }}>
+                                  🔧 Processing
+                                </span>
+                              )}
+                              {data.role === 'SALES_TEAM_HEAD' && !isTeamHead && (
+                                <span style={{
+                                  padding: '2px 8px',
+                                  background: '#E0E7FF',
+                                  color: '#4338CA',
+                                  borderRadius: '10px',
+                                  fontSize: '10px',
+                                  fontWeight: 500
+                                }}>
+                                  Team Member
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td>{staff.total_leads}</td>
+                          <td>{staff.converted_leads || 0}</td>
+                          <td>{staff.clients_in_processing || 0}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div style={{ padding: '20px', textAlign: 'center', color: '#6b7280' }}>
+                <p>No staff performance data available</p>
+                {data && data.role === 'SALES_TEAM_HEAD' && (
+                  <div style={{ fontSize: '12px', marginTop: '8px', fontStyle: 'italic', textAlign: 'left', background: '#f5f5f5', padding: '10px', borderRadius: '4px', maxWidth: '600px', margin: '10px auto' }}>
+                    <p><strong>Debug Information:</strong></p>
+                    <p>staffPerformance exists: {data.staffPerformance ? 'Yes' : 'No'}</p>
+                    <p>staffPerformance type: {data.staffPerformance ? typeof data.staffPerformance : 'N/A'}</p>
+                    <p>staffPerformance isArray: {data.staffPerformance ? Array.isArray(data.staffPerformance) ? 'Yes' : 'No' : 'N/A'}</p>
+                    <p>staffPerformance length: {data.staffPerformance && Array.isArray(data.staffPerformance) ? data.staffPerformance.length : 'N/A'}</p>
+                    {data.staffPerformance && Array.isArray(data.staffPerformance) && data.staffPerformance.length > 0 && (
+                      <div style={{ marginTop: '10px' }}>
+                        <p><strong>Staff Members Found ({data.staffPerformance.length}):</strong></p>
+                        <ul style={{ marginLeft: '20px', textAlign: 'left' }}>
+                          {data.staffPerformance.map((staff, idx) => (
+                            <li key={idx}>{staff.name} (ID: {staff.id}, Leads: {staff.total_leads}, Clients: {staff.converted_leads || 0})</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -1292,7 +1309,7 @@ const getPriorityColor = (priority) => {
 
 const formatPriority = (priority) => {
   if (!priority) return '-';
-  return priority.split(' ').map(word => 
+  return priority.split(' ').map(word =>
     word.charAt(0).toUpperCase() + word.slice(1)
   ).join(' ');
 };

@@ -243,6 +243,10 @@ router.get('/staff/:id', authenticate, async (req, res) => {
         }
       }
 
+      if (req.query.metricsOnly === 'true') {
+        return res.json({ metrics: processingMetrics });
+      }
+
       res.json({
         role: role,
         isReadOnly: isEmy,
@@ -316,6 +320,10 @@ router.get('/staff/:id', authenticate, async (req, res) => {
         leadsCount: staffLeads.length,
         clientsCount: staffClients.length
       });
+
+      if (req.query.metricsOnly === 'true') {
+        return res.json({ metrics });
+      }
 
       res.json({
         role: role,
@@ -475,16 +483,21 @@ router.get('/', authenticate, async (req, res) => {
           }
         });
       const userComments = (await Promise.all(userCommentsPromises)).filter(c => c !== null);
-
       const allActivity = [...recentLeads, ...userComments]
         .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
         .slice(0, 10);
 
-      res.json({
+      if (req.query.metricsOnly === 'true') {
+        return res.json({ metrics });
+      }
+
+      const response = {
         role: role,
         metrics,
         recentActivity: allActivity,
-      });
+        isRestricted: true
+      };
+      res.json(response);
     } else {
       // ADMIN or SALES_TEAM_HEAD dashboard
       let allLeads = [];
@@ -824,6 +837,10 @@ router.get('/', authenticate, async (req, res) => {
         console.log('  staffPerformance length:', staffPerformance ? staffPerformance.length : 'N/A');
       }
 
+      if (req.query.metricsOnly === 'true') {
+        return res.json({ metrics });
+      }
+
       const responseData = {
         role: role, // Use actual role (ADMIN or SALES_TEAM_HEAD)
         metrics,
@@ -832,13 +849,6 @@ router.get('/', authenticate, async (req, res) => {
         recentLeads,
         recentClients, // Add recent clients to dashboard
       };
-
-      // Final verification
-      if (role === 'SALES_TEAM_HEAD') {
-        console.log('🔍 Response data being sent:');
-        console.log('  responseData.staffPerformance exists?', typeof responseData.staffPerformance !== 'undefined');
-        console.log('  responseData.staffPerformance:', JSON.stringify(responseData.staffPerformance, null, 2));
-      }
 
       res.json(responseData);
     }

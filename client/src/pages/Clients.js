@@ -19,7 +19,7 @@ const Clients = () => {
   // Check if user can view payment data - Only Admin, Sneha, and Kripa
   const userName = user?.name || '';
   const userEmail = user?.email || '';
-  const canViewPaymentData = user?.role === 'ADMIN' || 
+  const canViewPaymentData = user?.role === 'ADMIN' ||
     userName === 'Sneha' || userName === 'SNEHA' || userEmail === 'sneha@toniosenora.com' ||
     userName === 'Kripa' || userName === 'KRIPA' || userEmail === 'kripa@toniosenora.com';
 
@@ -49,10 +49,11 @@ const Clients = () => {
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('focus', handleFocus);
 
-    // Auto-refresh every 10 seconds
+    /*
     const interval = setInterval(() => {
       fetchClients();
     }, 10000);
+    */
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
@@ -68,7 +69,7 @@ const Clients = () => {
       if (feeStatusFilter) params.fee_status = feeStatusFilter;
       if (search) params.search = search;
 
-      const response = await axios.get(`${API_BASE_URL}/api/clients`, { 
+      const response = await axios.get(`${API_BASE_URL}/api/clients`, {
         params,
         // Force fresh data
         headers: {
@@ -140,13 +141,13 @@ const Clients = () => {
     return (
       <div className="clients">
         <div className="clients-header">
-          <button 
+          <button
             className="btn-back"
             onClick={() => navigate('/clients')}
-            style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '8px', 
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
               marginBottom: '20px',
               padding: '8px 16px',
               background: '#F3F4F6',
@@ -306,8 +307,8 @@ const Clients = () => {
             const isOverdue = daysUntilDue !== null && daysUntilDue < 0;
 
             return (
-              <div 
-                key={client.id} 
+              <div
+                key={client.id}
                 className="client-card-simple"
                 onClick={() => handleClientClick(client.id)}
                 style={{ cursor: 'pointer' }}

@@ -20,22 +20,22 @@ const KripaDashboard = ({ viewingStaffId = null }) => {
       console.log('⚠️ Staff ID not available yet');
       return;
     }
-    
+
     try {
       setLoading(true);
       const processingStaffId = kripaStaffId;
       console.log('🔍 Kripa fetching clients with processing_staff_id:', processingStaffId, viewingStaffId ? '(Admin viewing)' : '(Self view)');
-      
+
       const response = await axios.get(`${API_BASE_URL}/api/clients`, {
-        params: { 
-          processing_staff_id: processingStaffId 
+        params: {
+          processing_staff_id: processingStaffId
         },
         // Force fresh data
         headers: {
           'Cache-Control': 'no-cache'
         }
       });
-      
+
       console.log('📊 Kripa received', response.data.length, 'clients');
       if (response.data.length > 0) {
         console.log('📋 Client details:', response.data.map(c => ({ id: c.id, name: c.name, processing_staff_id: c.processing_staff_id })));
@@ -44,9 +44,9 @@ const KripaDashboard = ({ viewingStaffId = null }) => {
         // Debug: Check all clients
         try {
           const allClientsResponse = await axios.get(`${API_BASE_URL}/api/clients`);
-          console.log('📋 All clients in system:', allClientsResponse.data.map(c => ({ 
-            id: c.id, 
-            name: c.name, 
+          console.log('📋 All clients in system:', allClientsResponse.data.map(c => ({
+            id: c.id,
+            name: c.name,
             processing_staff_id: c.processing_staff_id,
             assigned_staff_id: c.assigned_staff_id
           })));
@@ -54,7 +54,7 @@ const KripaDashboard = ({ viewingStaffId = null }) => {
           console.error('Debug fetch error:', debugError);
         }
       }
-      
+
       setClients(response.data || []);
     } catch (error) {
       console.error('❌ Error fetching clients:', error);
@@ -76,7 +76,7 @@ const KripaDashboard = ({ viewingStaffId = null }) => {
   // Auto-refresh when page becomes visible (user switches tabs/windows)
   useEffect(() => {
     if (!kripaStaffId) return;
-    
+
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && kripaStaffId) {
         console.log('🔄 Page visible, refreshing clients...');
@@ -94,12 +94,13 @@ const KripaDashboard = ({ viewingStaffId = null }) => {
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('focus', handleFocus);
 
-    // Auto-refresh every 10 seconds
+    /*
     const interval = setInterval(() => {
       if (kripaStaffId) {
         fetchClients();
       }
     }, 10000);
+    */
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
@@ -147,7 +148,7 @@ const KripaDashboard = ({ viewingStaffId = null }) => {
     try {
       const client = clients.find(c => c.id === clientId);
       const existingHistory = client.completed_actions || [];
-      
+
       // Check if action already completed - if yes, do nothing (silent)
       const actionAlreadyCompleted = existingHistory.some(a => a.action === action);
       if (actionAlreadyCompleted) {
@@ -220,7 +221,7 @@ const KripaDashboard = ({ viewingStaffId = null }) => {
           <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '8px' }}>
             User ID: {user?.id} | Name: {user?.name} | Email: {user?.email}
           </p>
-          <button 
+          <button
             onClick={async () => {
               try {
                 const allClients = await axios.get(`${API_BASE_URL}/api/clients`);
@@ -230,13 +231,13 @@ const KripaDashboard = ({ viewingStaffId = null }) => {
                 console.error('Error:', e);
               }
             }}
-            style={{ 
+            style={{
               marginTop: '12px',
-              padding: '8px 16px', 
-              background: '#6b7280', 
-              color: 'white', 
-              border: 'none', 
-              borderRadius: '6px', 
+              padding: '8px 16px',
+              background: '#6b7280',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
               cursor: 'pointer',
               fontSize: '12px'
             }}
@@ -252,282 +253,282 @@ const KripaDashboard = ({ viewingStaffId = null }) => {
             return (
               <div key={client.id} className="client-profile-wrapper">
                 <div className={`processing-task-card ${client.processing_status ? 'has-status' : ''}`}>
-                <div className="task-header">
-                  <div className="task-avatar">
-                    {getInitials(client.name)}
+                  <div className="task-header">
+                    <div className="task-avatar">
+                      {getInitials(client.name)}
+                    </div>
+                    <div className="task-info">
+                      <h2>{client.name}</h2>
+                      <p className="task-meta">Client Profile</p>
+                    </div>
+                    {client.processing_status && (
+                      <div className="processing-status-badge">
+                        <FiCheck className="badge-check-icon" />
+                        <span>{client.processing_status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</span>
+                      </div>
+                    )}
                   </div>
-                  <div className="task-info">
-                    <h2>{client.name}</h2>
-                    <p className="task-meta">Client Profile</p>
+
+                  <div className="task-section">
+                    <h3 className="task-section-title">Contact Information</h3>
+                    <div className="task-detail-row">
+                      <span className="task-label">Phone:</span>
+                      <span className="task-value">{client.phone_number ? `${client.phone_country_code || ''} ${client.phone_number}` : '-'}</span>
+                    </div>
+                    <div className="task-detail-row">
+                      <span className="task-label">Email:</span>
+                      <span className="task-value">{client.email || '-'}</span>
+                    </div>
+                    <div className="task-detail-row">
+                      <span className="task-label">WhatsApp:</span>
+                      <span className="task-value">{client.whatsapp_number ? `${client.whatsapp_country_code || ''} ${client.whatsapp_number}` : '-'}</span>
+                    </div>
                   </div>
-                  {client.processing_status && (
-                    <div className="processing-status-badge">
-                      <FiCheck className="badge-check-icon" />
-                      <span>{client.processing_status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</span>
+
+                  <div className="task-section">
+                    <h3 className="task-section-title">Professional Details</h3>
+                    <div className="task-detail-row">
+                      <span className="task-label">Age:</span>
+                      <span className="task-value">{client.age || '-'}</span>
+                    </div>
+                    <div className="task-detail-row">
+                      <span className="task-label">Occupation:</span>
+                      <span className="task-value">{client.occupation || '-'}</span>
+                    </div>
+                    <div className="task-detail-row">
+                      <span className="task-label">Qualification:</span>
+                      <span className="task-value">{client.qualification || '-'}</span>
+                    </div>
+                    <div className="task-detail-row">
+                      <span className="task-label">Experience:</span>
+                      <span className="task-value">{client.year_of_experience ? `${client.year_of_experience} years` : '-'}</span>
+                    </div>
+                    <div className="task-detail-row">
+                      <span className="task-label">Target Country:</span>
+                      <span className="task-value">{client.target_country || client.country || '-'}</span>
+                    </div>
+                    <div className="task-detail-row">
+                      <span className="task-label">Residing Country:</span>
+                      <span className="task-value">{client.residing_country || '-'}</span>
+                    </div>
+                    <div className="task-detail-row">
+                      <span className="task-label">Program:</span>
+                      <span className="task-value">{client.program || '-'}</span>
+                    </div>
+                  </div>
+
+                  <div className="task-section registration-section">
+                    <h3 className="task-section-title">Registration Details</h3>
+                    {isEditing ? (
+                      <>
+                        <div className="task-detail-row">
+                          <label>Assessment Authority:</label>
+                          <input
+                            type="text"
+                            value={editData.assessment_authority}
+                            onChange={(e) => setEditData({ ...editData, assessment_authority: e.target.value })}
+                            className="task-input"
+                            placeholder="Enter assessment authority"
+                          />
+                        </div>
+                        <div className="task-detail-row">
+                          <label>Occupation Mapped:</label>
+                          <input
+                            type="text"
+                            value={editData.occupation_mapped}
+                            onChange={(e) => setEditData({ ...editData, occupation_mapped: e.target.value })}
+                            className="task-input"
+                            placeholder="Enter occupation mapped"
+                          />
+                        </div>
+                        <div className="task-detail-row">
+                          <label>Registration Fee Paid:</label>
+                          <select
+                            value={editData.registration_fee_paid}
+                            onChange={(e) => setEditData({ ...editData, registration_fee_paid: e.target.value === 'true' })}
+                            className="task-select"
+                          >
+                            <option value="false">No</option>
+                            <option value="true">Yes</option>
+                          </select>
+                        </div>
+                        <div className="task-actions">
+                          <button
+                            className="btn-save-task"
+                            onClick={() => handleSave(client.id)}
+                          >
+                            <FiSave /> Save Changes
+                          </button>
+                          <button
+                            className="btn-cancel-task"
+                            onClick={() => {
+                              setEditingClient(null);
+                              setEditData({});
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="task-detail-row">
+                          <span className="task-label">Assessment Authority:</span>
+                          <span className="task-value">{client.assessment_authority || '-'}</span>
+                        </div>
+                        <div className="task-detail-row">
+                          <span className="task-label">Occupation Mapped:</span>
+                          <span className="task-value">{client.occupation_mapped || '-'}</span>
+                        </div>
+                        <div className="task-detail-row">
+                          <span className="task-label">Registration Fee Paid:</span>
+                          <span className="task-value">{client.registration_fee_paid ? 'Yes' : 'No'}</span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  <div className="task-section payment-section">
+                    <h3 className="task-section-title">Payment Information</h3>
+                    {isEditing ? (
+                      <>
+                        <div className="task-detail-row">
+                          <label>Amount Paid:</label>
+                          <input
+                            type="number"
+                            value={editData.amount_paid}
+                            onChange={(e) => setEditData({ ...editData, amount_paid: e.target.value })}
+                            className="task-input"
+                            placeholder="Enter amount"
+                          />
+                        </div>
+                        <div className="task-detail-row">
+                          <label>Fee Status:</label>
+                          <select
+                            value={editData.fee_status}
+                            onChange={(e) => setEditData({ ...editData, fee_status: e.target.value })}
+                            className="task-select"
+                          >
+                            <option value="">Select Status</option>
+                            <option value="1st Installment Completed">1st Installment Completed</option>
+                            <option value="Payment Pending">Payment Pending</option>
+                            <option value="PTE Fee Paid">PTE Fee Paid</option>
+                          </select>
+                        </div>
+                        <div className="task-actions">
+                          <button
+                            className="btn-save-task"
+                            onClick={() => handleSave(client.id)}
+                          >
+                            <FiSave /> Save Changes
+                          </button>
+                          <button
+                            className="btn-cancel-task"
+                            onClick={() => {
+                              setEditingClient(null);
+                              setEditData({});
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="task-detail-row">
+                          <span className="task-label">Amount Paid:</span>
+                          <span className="task-value">
+                            {client.amount_paid !== null && client.amount_paid !== undefined
+                              ? `د.إ ${client.amount_paid}`
+                              : '-'}
+                          </span>
+                        </div>
+                        <div className="task-detail-row">
+                          <span className="task-label">Fee Status:</span>
+                          <span className={`fee-status-badge ${client.fee_status?.toLowerCase().replace(/\s+/g, '-')}`}>
+                            {client.fee_status || 'Not Set'}
+                          </span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {!isEditing && (
+                    <div className="task-actions-footer">
+                      <button
+                        className="btn-edit-task"
+                        onClick={() => handleEdit(client)}
+                      >
+                        <FiEdit2 /> Edit Client Information
+                      </button>
                     </div>
                   )}
                 </div>
 
-                <div className="task-section">
-                  <h3 className="task-section-title">Contact Information</h3>
-                  <div className="task-detail-row">
-                    <span className="task-label">Phone:</span>
-                    <span className="task-value">{client.phone_number ? `${client.phone_country_code || ''} ${client.phone_number}` : '-'}</span>
-                  </div>
-                  <div className="task-detail-row">
-                    <span className="task-label">Email:</span>
-                    <span className="task-value">{client.email || '-'}</span>
-                  </div>
-                  <div className="task-detail-row">
-                    <span className="task-label">WhatsApp:</span>
-                    <span className="task-value">{client.whatsapp_number ? `${client.whatsapp_country_code || ''} ${client.whatsapp_number}` : '-'}</span>
-                  </div>
-                </div>
-
-                <div className="task-section">
-                  <h3 className="task-section-title">Professional Details</h3>
-                  <div className="task-detail-row">
-                    <span className="task-label">Age:</span>
-                    <span className="task-value">{client.age || '-'}</span>
-                  </div>
-                  <div className="task-detail-row">
-                    <span className="task-label">Occupation:</span>
-                    <span className="task-value">{client.occupation || '-'}</span>
-                  </div>
-                  <div className="task-detail-row">
-                    <span className="task-label">Qualification:</span>
-                    <span className="task-value">{client.qualification || '-'}</span>
-                  </div>
-                  <div className="task-detail-row">
-                    <span className="task-label">Experience:</span>
-                    <span className="task-value">{client.year_of_experience ? `${client.year_of_experience} years` : '-'}</span>
-                  </div>
-                  <div className="task-detail-row">
-                    <span className="task-label">Target Country:</span>
-                    <span className="task-value">{client.target_country || client.country || '-'}</span>
-                  </div>
-                  <div className="task-detail-row">
-                    <span className="task-label">Residing Country:</span>
-                    <span className="task-value">{client.residing_country || '-'}</span>
-                  </div>
-                  <div className="task-detail-row">
-                    <span className="task-label">Program:</span>
-                    <span className="task-value">{client.program || '-'}</span>
-                  </div>
-                </div>
-
-                <div className="task-section registration-section">
-                  <h3 className="task-section-title">Registration Details</h3>
-                  {isEditing ? (
-                    <>
-                      <div className="task-detail-row">
-                        <label>Assessment Authority:</label>
-                        <input
-                          type="text"
-                          value={editData.assessment_authority}
-                          onChange={(e) => setEditData({ ...editData, assessment_authority: e.target.value })}
-                          className="task-input"
-                          placeholder="Enter assessment authority"
-                        />
-                      </div>
-                      <div className="task-detail-row">
-                        <label>Occupation Mapped:</label>
-                        <input
-                          type="text"
-                          value={editData.occupation_mapped}
-                          onChange={(e) => setEditData({ ...editData, occupation_mapped: e.target.value })}
-                          className="task-input"
-                          placeholder="Enter occupation mapped"
-                        />
-                      </div>
-                      <div className="task-detail-row">
-                        <label>Registration Fee Paid:</label>
-                        <select
-                          value={editData.registration_fee_paid}
-                          onChange={(e) => setEditData({ ...editData, registration_fee_paid: e.target.value === 'true' })}
-                          className="task-select"
-                        >
-                          <option value="false">No</option>
-                          <option value="true">Yes</option>
-                        </select>
-                      </div>
-                      <div className="task-actions">
-                        <button
-                          className="btn-save-task"
-                          onClick={() => handleSave(client.id)}
-                        >
-                          <FiSave /> Save Changes
-                        </button>
-                        <button
-                          className="btn-cancel-task"
-                          onClick={() => {
-                            setEditingClient(null);
-                            setEditData({});
-                          }}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="task-detail-row">
-                        <span className="task-label">Assessment Authority:</span>
-                        <span className="task-value">{client.assessment_authority || '-'}</span>
-                      </div>
-                      <div className="task-detail-row">
-                        <span className="task-label">Occupation Mapped:</span>
-                        <span className="task-value">{client.occupation_mapped || '-'}</span>
-                      </div>
-                      <div className="task-detail-row">
-                        <span className="task-label">Registration Fee Paid:</span>
-                        <span className="task-value">{client.registration_fee_paid ? 'Yes' : 'No'}</span>
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                <div className="task-section payment-section">
-                  <h3 className="task-section-title">Payment Information</h3>
-                  {isEditing ? (
-                    <>
-                      <div className="task-detail-row">
-                        <label>Amount Paid:</label>
-                        <input
-                          type="number"
-                          value={editData.amount_paid}
-                          onChange={(e) => setEditData({ ...editData, amount_paid: e.target.value })}
-                          className="task-input"
-                          placeholder="Enter amount"
-                        />
-                      </div>
-                      <div className="task-detail-row">
-                        <label>Fee Status:</label>
-                        <select
-                          value={editData.fee_status}
-                          onChange={(e) => setEditData({ ...editData, fee_status: e.target.value })}
-                          className="task-select"
-                        >
-                          <option value="">Select Status</option>
-                          <option value="1st Installment Completed">1st Installment Completed</option>
-                          <option value="Payment Pending">Payment Pending</option>
-                          <option value="PTE Fee Paid">PTE Fee Paid</option>
-                        </select>
-                      </div>
-                      <div className="task-actions">
-                        <button
-                          className="btn-save-task"
-                          onClick={() => handleSave(client.id)}
-                        >
-                          <FiSave /> Save Changes
-                        </button>
-                        <button
-                          className="btn-cancel-task"
-                          onClick={() => {
-                            setEditingClient(null);
-                            setEditData({});
-                          }}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="task-detail-row">
-                        <span className="task-label">Amount Paid:</span>
-                        <span className="task-value">
-                          {client.amount_paid !== null && client.amount_paid !== undefined
-                            ? `د.إ ${client.amount_paid}`
-                            : '-'}
-                        </span>
-                      </div>
-                      <div className="task-detail-row">
-                        <span className="task-label">Fee Status:</span>
-                        <span className={`fee-status-badge ${client.fee_status?.toLowerCase().replace(/\s+/g, '-')}`}>
-                          {client.fee_status || 'Not Set'}
-                        </span>
-                      </div>
-                    </>
-                  )}
-                </div>
-
+                {/* Processing Actions - Outside Profile Card */}
                 {!isEditing && (
-                  <div className="task-actions-footer">
-                    <button
-                      className="btn-edit-task"
-                      onClick={() => handleEdit(client)}
-                    >
-                      <FiEdit2 /> Edit Client Information
-                    </button>
+                  <div className="processing-actions-container">
+                    <div className="processing-buttons">
+                      {(() => {
+                        const isHandOverCompleted = client.completed_actions?.some(a => a.action === 'hand_over_to_australia');
+                        return (
+                          <button
+                            className={`btn-processing-action ${isHandOverCompleted ? 'completed' : ''}`}
+                            onClick={() => handleProcessingAction(client.id, 'hand_over_to_australia')}
+                          >
+                            {isHandOverCompleted ? (
+                              <>
+                                <FiCheck /> Hand Over to Australia - Done
+                              </>
+                            ) : (
+                              <>
+                                <FiSend /> Hand Over to Australia
+                              </>
+                            )}
+                          </button>
+                        );
+                      })()}
+                      {(() => {
+                        const isPaymentDone = client.completed_actions?.some(a => a.action === 'pending_payment_done');
+                        return (
+                          <button
+                            className={`btn-processing-action ${isPaymentDone ? 'completed' : ''}`}
+                            onClick={() => handleProcessingAction(client.id, 'pending_payment_done')}
+                          >
+                            {isPaymentDone ? (
+                              <>
+                                <FiCheck /> Confirm Pending Payment Done - Done
+                              </>
+                            ) : (
+                              <>
+                                <FiDollarSign /> Confirm Pending Payment Done
+                              </>
+                            )}
+                          </button>
+                        );
+                      })()}
+                      {(() => {
+                        const isAgreementSubmitted = client.completed_actions?.some(a => a.action === 'service_agreement_submitted');
+                        return (
+                          <button
+                            className={`btn-processing-action ${isAgreementSubmitted ? 'completed' : ''}`}
+                            onClick={() => handleProcessingAction(client.id, 'service_agreement_submitted')}
+                          >
+                            {isAgreementSubmitted ? (
+                              <>
+                                <FiCheck /> Service Agreement Submitted - Done
+                              </>
+                            ) : (
+                              <>
+                                <FiFileText /> Service Agreement Submitted
+                              </>
+                            )}
+                          </button>
+                        );
+                      })()}
+                    </div>
                   </div>
                 )}
-              </div>
-
-              {/* Processing Actions - Outside Profile Card */}
-              {!isEditing && (
-                <div className="processing-actions-container">
-                  <div className="processing-buttons">
-                    {(() => {
-                      const isHandOverCompleted = client.completed_actions?.some(a => a.action === 'hand_over_to_australia');
-                      return (
-                        <button
-                          className={`btn-processing-action ${isHandOverCompleted ? 'completed' : ''}`}
-                          onClick={() => handleProcessingAction(client.id, 'hand_over_to_australia')}
-                        >
-                          {isHandOverCompleted ? (
-                            <>
-                              <FiCheck /> Hand Over to Australia - Done
-                            </>
-                          ) : (
-                            <>
-                              <FiSend /> Hand Over to Australia
-                            </>
-                          )}
-                        </button>
-                      );
-                    })()}
-                    {(() => {
-                      const isPaymentDone = client.completed_actions?.some(a => a.action === 'pending_payment_done');
-                      return (
-                        <button
-                          className={`btn-processing-action ${isPaymentDone ? 'completed' : ''}`}
-                          onClick={() => handleProcessingAction(client.id, 'pending_payment_done')}
-                        >
-                          {isPaymentDone ? (
-                            <>
-                              <FiCheck /> Confirm Pending Payment Done - Done
-                            </>
-                          ) : (
-                            <>
-                              <FiDollarSign /> Confirm Pending Payment Done
-                            </>
-                          )}
-                        </button>
-                      );
-                    })()}
-                    {(() => {
-                      const isAgreementSubmitted = client.completed_actions?.some(a => a.action === 'service_agreement_submitted');
-                      return (
-                        <button
-                          className={`btn-processing-action ${isAgreementSubmitted ? 'completed' : ''}`}
-                          onClick={() => handleProcessingAction(client.id, 'service_agreement_submitted')}
-                        >
-                          {isAgreementSubmitted ? (
-                            <>
-                              <FiCheck /> Service Agreement Submitted - Done
-                            </>
-                          ) : (
-                            <>
-                              <FiFileText /> Service Agreement Submitted
-                            </>
-                          )}
-                        </button>
-                      );
-                    })()}
-                  </div>
-                </div>
-              )}
               </div>
             );
           })}

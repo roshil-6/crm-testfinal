@@ -80,12 +80,13 @@ const SnehaDashboard = ({ viewingStaffId = null }) => {
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('focus', handleFocus);
 
-    // Auto-refresh every 10 seconds
+    /*
     const interval = setInterval(() => {
       if (snehaStaffId) {
         fetchClients();
       }
     }, 10000);
+    */
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
